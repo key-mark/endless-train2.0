@@ -6,31 +6,33 @@
 layout_mode = 3
 anchors_preset = 0
 offset_left = -18.0
-offset_top = 724.0
+offset_top = 754.0
 offset_right = 18.0
-offset_bottom = 784.0
+offset_bottom = 814.0
 mouse_filter = 2
 
 [node name="Visual" type="ColorRect" parent="." unique_id=976964865]
 z_index = 2
 layout_mode = 0
-offset_right = 36.0
-offset_bottom = 60.0
+offset_left = 3.0
+offset_top = 2.0
+offset_right = 39.0
+offset_bottom = 62.0
 mouse_filter = 2
 color = Color(0.2901961, 0.67058825, 0.9019608, 0)
 
 [node name="Sprite2D" type="Sprite2D" parent="Visual" unique_id=378999471]
-position = Vector2(14, 48)
+position = Vector2(15, 24)
 scale = Vector2(0.23214285, 0.28609625)
 texture = ExtResource("1_0ihkf")
 
 [node name="Label" type="Label" parent="." unique_id=1870811248]
 z_index = 2
 layout_mode = 0
-offset_left = -24.0
-offset_top = 62.0
-offset_right = 60.0
-offset_bottom = 88.0
+offset_left = -20.0
+offset_top = 38.0
+offset_right = 64.0
+offset_bottom = 64.0
 theme_override_font_sizes/font_size = 16
 text = "Hero"
 horizontal_alignment = 1

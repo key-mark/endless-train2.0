@@ -2,11 +2,10 @@ using Godot;
 
 public partial class Bullet : ColorRect
 {
-    private const float TopDestroyY = -32.0f;
-
     [Export] public float Speed { get; set; } = 620.0f;
     [Export] public int Damage { get; set; } = 10;
     [Export] public float ExplosionRadius { get; set; }
+    [Export] public float DestroyDistanceAboveTop { get; set; } = 48.0f;
 
     public override void _Process(double delta)
     {
@@ -14,7 +13,7 @@ public partial class Bullet : ColorRect
 
         TryHitTarget();
 
-        if (Position.Y < TopDestroyY)
+        if (Position.Y + Size.Y < -DestroyDistanceAboveTop)
         {
             QueueFree();
         }
@@ -28,6 +27,18 @@ public partial class Bullet : ColorRect
         }
 
         Rect2 bulletRect = new Rect2(Position, Size);
+        foreach (Node child in parent.GetChildren())
+        {
+            if (child is Shockwave shockwave && !shockwave.IsQueuedForDeletion() && bulletRect.Intersects(shockwave.GetHitRect()))
+            {
+                Vector2 hitCenter = new(shockwave.CenterX(), shockwave.Position.Y + shockwave.Size.Y * 0.5f);
+                shockwave.TakeDamage(Damage);
+                DamageNearbyTargets(parent, child, hitCenter);
+                QueueFree();
+                return;
+            }
+        }
+
         foreach (Node child in parent.GetChildren())
         {
             if (child is Enemy enemy && !enemy.IsQueuedForDeletion() && bulletRect.Intersects(enemy.GetHitRect()))
@@ -80,6 +91,10 @@ public partial class Bullet : ColorRect
             else if (child is Pickup pickup && hitCenter.DistanceTo(pickup.Position + pickup.Size * 0.5f) <= ExplosionRadius)
             {
                 pickup.TakeDamage(Damage);
+            }
+            else if (child is Shockwave shockwave && hitCenter.DistanceTo(new Vector2(shockwave.CenterX(), shockwave.Position.Y + shockwave.Size.Y * 0.5f)) <= ExplosionRadius)
+            {
+                shockwave.TakeDamage(Damage);
             }
             else if (child is Boss boss && hitCenter.DistanceTo(boss.Position + boss.Size * 0.5f) <= ExplosionRadius)
             {

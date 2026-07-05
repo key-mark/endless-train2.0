@@ -3,6 +3,7 @@
   "levels": [
     {
       "id": "demo_001",
+      "station": 1,
       "path": "res://data/levels/demo_001.json"
     }
   ]

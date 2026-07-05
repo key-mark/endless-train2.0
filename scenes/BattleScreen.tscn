@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://c6mrbvvtgg3kv"]
 
 [ext_resource type="Script" uid="uid://cykh8xcxh13so" path="res://scripts/BattleScreen.cs" id="1_battle_screen_script"]
-[ext_resource type="Texture2D" uid="uid://b7nuplm1f3tv6" path="res://resource/figure/background.png" id="2_be0d5"]
 [ext_resource type="Texture2D" uid="uid://chawiuuxv62ja" path="res://resource/figure/train.png" id="2_e26j6"]
+[ext_resource type="Texture2D" uid="uid://c634gxwudu8x" path="res://resource/figure/new_bg.png" id="3_e26j6"]
 
 [node name="BattleScreen" type="Control" unique_id=567742257]
 layout_mode = 3
@@ -19,24 +19,13 @@ offset_right = 540.0
 offset_bottom = 960.0
 color = Color(0.017245464, 0.110613726, 0.17496371, 1)
 
-[node name="BattleAreaLabel" type="Label" parent="BattleArea540x960" unique_id=2047572668]
-z_index = 3
-layout_mode = 0
-offset_left = 40.0
-offset_top = 24.0
-offset_right = 500.0
-offset_bottom = 70.0
-theme_override_font_sizes/font_size = 22
-text = "540 x 960 Portrait Battle Area"
-horizontal_alignment = 1
-
 [node name="WeaponStatsLabel" type="Label" parent="BattleArea540x960" unique_id=731113873]
 z_index = 3
 layout_mode = 0
-offset_left = 24.0
-offset_top = 74.0
-offset_right = 250.0
-offset_bottom = 130.0
+offset_left = 12.0
+offset_top = 65.0
+offset_right = 238.0
+offset_bottom = 121.0
 theme_override_font_sizes/font_size = 18
 text = "Cannon Damage: 10
 Fire Interval: 0.75s"
@@ -44,10 +33,10 @@ Fire Interval: 0.75s"
 [node name="CombatStatusLabel" type="Label" parent="BattleArea540x960" unique_id=736437837]
 z_index = 3
 layout_mode = 0
-offset_left = 292.0
-offset_top = 74.0
-offset_right = 520.0
-offset_bottom = 150.0
+offset_left = 280.0
+offset_top = 65.0
+offset_right = 508.0
+offset_bottom = 149.0
 theme_override_font_sizes/font_size = 18
 text = "Train HP: 100/100
 Kill Count: 0
@@ -57,10 +46,10 @@ horizontal_alignment = 2
 [node name="TemporaryBuffLabel" type="Label" parent="BattleArea540x960" unique_id=781146987]
 z_index = 3
 layout_mode = 0
-offset_left = 24.0
-offset_top = 132.0
-offset_right = 250.0
-offset_bottom = 226.0
+offset_left = 12.0
+offset_top = 123.0
+offset_right = 238.0
+offset_bottom = 224.0
 theme_override_font_sizes/font_size = 16
 text = "Temporary Buffs
 ATK +0
@@ -70,41 +59,37 @@ Bullets +0"
 [node name="LeftTrack" type="ColorRect" parent="BattleArea540x960" unique_id=629723777]
 z_index = 1
 layout_mode = 0
-offset_left = 171.0
-offset_top = 100.0
-offset_right = 179.0
-offset_bottom = 820.0
-rotation = 0.13900124
+offset_left = 173.0
+offset_top = 169.0
+offset_right = 179.07556
+offset_bottom = 776.83813
 color = Color(1, 1, 1, 0)
 
 [node name="RightTrack" type="ColorRect" parent="BattleArea540x960" unique_id=1109850193]
 z_index = 1
 layout_mode = 0
-offset_left = 333.0
-offset_top = 106.68762
-offset_right = 341.0
-offset_bottom = 826.6876
-rotation = -0.20838106
+offset_left = 364.0
+offset_top = 174.0
+offset_right = 372.0
+offset_bottom = 775.0902
 color = Color(0.54901963, 0.61960787, 0.6784314, 0)
 
 [node name="LeftTrackGuide" type="ColorRect" parent="BattleArea540x960" unique_id=1415043336]
 z_index = 1
 layout_mode = 0
 offset_left = 125.0
-offset_top = 100.0
-offset_right = 225.0
-offset_bottom = 820.0
-rotation = 0.13900124
+offset_top = 169.0
+offset_right = 251.95325
+offset_bottom = 772.72736
 color = Color(0.18039216, 0.23137255, 0.27058825, 0)
 
 [node name="RightTrackGuide" type="ColorRect" parent="BattleArea540x960" unique_id=671095482]
 z_index = 1
 layout_mode = 0
-offset_left = 287.0
-offset_top = 106.68762
-offset_right = 387.0
-offset_bottom = 826.6876
-rotation = -0.20838106
+offset_left = 299.0
+offset_top = 168.0
+offset_right = 409.00552
+offset_bottom = 783.1607
 color = Color(0.54901963, 0.61960787, 0.6784314, 0)
 
 [node name="TrainBasePlaceholder" type="ColorRect" parent="BattleArea540x960" unique_id=248628059]
@@ -127,18 +112,7 @@ anchors_preset = 0
 offset_left = 270.0
 offset_right = 270.0
 
-[node name="TrainBasePlaceholder#TrainBaseLabel" type="Label" parent="." unique_id=338971764]
-layout_mode = 0
-offset_left = 24.0
-offset_top = 36.0
-offset_right = 476.0
-offset_bottom = 84.0
-theme_override_font_sizes/font_size = 24
-text = "Bottom Train Base Placeholder"
-horizontal_alignment = 1
-vertical_alignment = 1
-
 [node name="Background" type="Sprite2D" parent="." unique_id=1055049521]
-position = Vector2(267, 482.99997)
-scale = Vector2(0.5324516, 0.5470058)
-texture = ExtResource("2_be0d5")
+position = Vector2(267.74997, 463.64938)
+scale = Vector2(0.34537762, 0.33019662)
+texture = ExtResource("3_e26j6")

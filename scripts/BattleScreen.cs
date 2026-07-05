@@ -9,6 +9,18 @@ public partial class BattleScreen : Control
     private const string EnemyScenePath = "res://scenes/objects/Enemy.tscn";
     private const string PickupsScenePath = "res://scenes/objects/Pickups.tscn";
     private const string BossScenePath = "res://scenes/objects/Boss.tscn";
+    private const string SoliderScenePath = "res://scenes/objects/Solider.tscn";
+    private const string ShockwaveSmallScenePath = "res://scenes/objects/wave_small.tscn";
+    private const string ShockwaveBigScenePath = "res://scenes/objects/wave_big.tscn";
+    private const string TrainScreenScenePath = "res://scenes/TrainScreen.tscn";
+    private const string EndMenuScenePath = "res://scenes/Endmenu.tscn";
+    private static readonly string[] TurretLevelTexturePaths =
+    {
+        "res://resource/figure/gun/gun_lv1.png",
+        "res://resource/figure/gun/gun_lv2.png",
+        "res://resource/figure/gun/gun_lv3.png",
+        "res://resource/figure/gun/gun_lv4.png"
+    };
 
     private LevelConfig _level = null!;
     private Control _battleArea = null!;
@@ -20,6 +32,11 @@ public partial class BattleScreen : Control
     private PackedScene _enemyScene = null!;
     private PackedScene _pickupsScene = null!;
     private PackedScene _bossScene = null!;
+    private PackedScene _soliderScene = null!;
+    private PackedScene _shockwaveSmallScene = null!;
+    private PackedScene _shockwaveBigScene = null!;
+    private readonly Texture2D[] _turretLevelTextures = new Texture2D[TurretLevelTexturePaths.Length];
+    private Sprite2D _turretSprite = null!;
     private Label _weaponStatsLabel = null!;
     private Label _combatStatusLabel = null!;
     private Label _temporaryBuffLabel = null!;
@@ -29,8 +46,11 @@ public partial class BattleScreen : Control
     private float _battleTime;
     private int _killCount;
     private int _nextWaveEventIndex;
+    private int _nextPickupPairIndex;
     private int _temporaryAttackAdd;
     private int _temporaryBulletAdd;
+    private int _soliderCount;
+    private int _turretVisualLevel = 1;
     private int _bonusScrapReward;
     private int _enemyScrapReward;
     private float _temporaryFireRateMultiplier = 1.0f;
@@ -42,7 +62,14 @@ public partial class BattleScreen : Control
     private bool _battleEnded;
     private bool _battleWon;
     private bool _bossDefeatHandled;
+    private bool _bossAttackInProgress;
     private bool _rewardApplied;
+    private int _activeBossShockwaves;
+    private int _staggeredShockwavesRemaining;
+    private int _nextStaggeredLaneIndex;
+    private float _bossAttackCooldownTimer;
+    private float _staggeredSpawnTimer;
+    private float _nextPickupPairTime;
     private int _scrapReward;
     private int _fuelReward;
     private int _foodReward;
@@ -56,6 +83,17 @@ public partial class BattleScreen : Control
     private readonly List<WaveSpawnEvent> _waveTimeline = new();
     private readonly List<TimedFeedback> _feedbacks = new();
     private readonly Dictionary<string, TrackLine> _trackLines = new();
+    private static readonly Vector2[] SoliderFollowerSlots =
+    {
+        new(-1.0f, -0.11f),
+        new(1.0f, -0.11f),
+        new(-0.67f, -0.93f),
+        new(0.67f, -0.93f),
+        new(-0.67f, 0.82f),
+        new(0.67f, 0.82f),
+        new(-1.44f, 0.33f),
+        new(1.44f, 0.33f)
+    };
 
     private enum WaveSpawnKind
     {
@@ -70,7 +108,15 @@ public partial class BattleScreen : Control
         Ended
     }
 
+    private enum BossAttackKind
+    {
+        StaggeredShockwaves,
+        WideShockwave
+    }
+
     private BattlePhase _phase = BattlePhase.Wave;
+    private BossAttackKind _nextBossAttack = BossAttackKind.StaggeredShockwaves;
+    private BossAttackKind _currentBossAttack = BossAttackKind.StaggeredShockwaves;
 
     private sealed class WaveSpawnEvent
     {
@@ -142,11 +188,11 @@ public partial class BattleScreen : Control
 
     public override void _Ready()
     {
-        _level = LevelConfig.LoadSelected();
+        _level = LevelConfig.LoadForStation(State.CurrentStation);
         _battleArea = GetNode<Control>("BattleArea540x960");
         _playerRig = GetNode<Control>("BattleArea540x960/PlayerRig");
         _trainBase = GetNode<ColorRect>("BattleArea540x960/TrainBasePlaceholder");
-        _waveStatusLabel = GetNode<Label>("BattleArea540x960/BattleAreaLabel");
+        _waveStatusLabel = GetNodeOrNull<Label>("BattleArea540x960/BattleAreaLabel") ?? CreateWaveStatusLabel();
         _weaponStatsLabel = GetNode<Label>("BattleArea540x960/WeaponStatsLabel");
         _combatStatusLabel = GetNode<Label>("BattleArea540x960/CombatStatusLabel");
         _temporaryBuffLabel = GetNode<Label>("BattleArea540x960/TemporaryBuffLabel");
@@ -164,6 +210,23 @@ public partial class BattleScreen : Control
         RefreshTemporaryBuffs();
         RefreshWaveStatus();
         _shootTimer = GetFireInterval();
+    }
+
+    private Label CreateWaveStatusLabel()
+    {
+        Label label = new()
+        {
+            Name = "BattleAreaLabel",
+            ZIndex = 3,
+            Position = new Vector2(150.0f, 8.0f),
+            Size = new Vector2(240.0f, 28.0f),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        label.AddThemeFontSizeOverride("font_size", 18);
+        _battleArea.AddChild(label);
+        return label;
     }
 
     public override void _Process(double delta)
@@ -184,6 +247,11 @@ public partial class BattleScreen : Control
         if (_phase == BattlePhase.Wave)
         {
             RunWaveTimeline();
+            RunPickupPairSchedule();
+        }
+        else if (_phase == BattlePhase.Boss)
+        {
+            RunBossShockwaveAttacks((float)delta);
         }
 
         CheckEnemyLineDamage();
@@ -247,6 +315,13 @@ public partial class BattleScreen : Control
         _enemyScene = GD.Load<PackedScene>(EnemyScenePath);
         _pickupsScene = GD.Load<PackedScene>(PickupsScenePath);
         _bossScene = GD.Load<PackedScene>(BossScenePath);
+        _soliderScene = GD.Load<PackedScene>(SoliderScenePath);
+        _shockwaveSmallScene = GD.Load<PackedScene>(ShockwaveSmallScenePath);
+        _shockwaveBigScene = GD.Load<PackedScene>(ShockwaveBigScenePath);
+        for (int i = 0; i < TurretLevelTexturePaths.Length; i += 1)
+        {
+            _turretLevelTextures[i] = GD.Load<Texture2D>(TurretLevelTexturePaths[i]);
+        }
     }
 
     private static T InstantiateTypedOrFallback<T>(PackedScene scene, string scenePath) where T : Node, new()
@@ -265,7 +340,35 @@ public partial class BattleScreen : Control
     private void SpawnPlayerPrefabs()
     {
         _playerRig.AddChild(_heroScene.Instantiate<Control>());
-        _playerRig.AddChild(_turretScene.Instantiate<Control>());
+        Control turret = _turretScene.Instantiate<Control>();
+        _turretSprite = turret.GetNodeOrNull<Sprite2D>("Sprite2D");
+        ApplyTurretVisualLevel(1);
+        _playerRig.AddChild(turret);
+    }
+
+    private int UpgradeTurretVisual()
+    {
+        ApplyTurretVisualLevel(_turretVisualLevel + 1);
+        return _turretVisualLevel;
+    }
+
+    private void ApplyTurretVisualLevel(int level)
+    {
+        _turretVisualLevel = Mathf.Clamp(level, 1, TurretLevelTexturePaths.Length);
+        if (_turretSprite == null)
+        {
+            GD.PushWarning("Turret Sprite2D not found. Visual upgrade skipped.");
+            return;
+        }
+
+        Texture2D texture = _turretLevelTextures[_turretVisualLevel - 1];
+        if (texture == null)
+        {
+            GD.PushWarning($"Turret level texture not found: {TurretLevelTexturePaths[_turretVisualLevel - 1]}");
+            return;
+        }
+
+        _turretSprite.Texture = texture;
     }
 
     private void BuildSceneTrackLines()
@@ -359,6 +462,11 @@ public partial class BattleScreen : Control
 
     private void RefreshWaveStatus()
     {
+        if (_waveStatusLabel == null)
+        {
+            return;
+        }
+
         float displayTime = Mathf.Min(_battleTime, _level.BossStartTime);
         string phaseName = GetWavePhaseName(displayTime);
         _waveStatusLabel.Text = _phase == BattlePhase.Boss
@@ -433,6 +541,7 @@ public partial class BattleScreen : Control
         bullet.Speed = _level.Objects.BulletSpeed;
         bullet.Damage = damage;
         bullet.ExplosionRadius = _temporaryExplosiveRadius;
+        bullet.DestroyDistanceAboveTop = _level.Objects.BulletDestroyDistanceAboveTop;
 
         _battleArea.AddChild(bullet);
     }
@@ -480,17 +589,18 @@ public partial class BattleScreen : Control
         return trackLine.Direction * alongOffset + trackLine.Normal * sideOffset;
     }
 
-    private void SpawnPickup(string pickupId)
+    private void SpawnPickup(string pickupId, int laneIndex)
     {
         LevelConfig.PickupConfig pickupConfig = _level.GetPickup(pickupId);
-        Vector2 centerStart = new(_level.Objects.PickupSpawnX, _level.Objects.PickupSpawnY);
-        Vector2 centerEnd = new(_level.Objects.PickupSpawnX, _level.TrainLineY);
+        TrackLine trackLine = GetTrackLine(string.Empty, laneIndex);
+        Vector2 centerStart = trackLine.PointAtY(_level.Objects.PickupSpawnY);
+        Vector2 centerEnd = trackLine.PointAtY(_level.TrainLineY);
 
         Pickup pickup = InstantiateTypedOrFallback<Pickup>(_pickupsScene, PickupsScenePath);
         pickup.Size = new Vector2(_level.Objects.PickupSize, _level.Objects.PickupSize);
-        pickup.Color = pickupConfig.Color;
-        pickup.MaxHp = pickupConfig.Hp;
-        pickup.Speed = pickupConfig.Speed;
+        pickup.Color = _level.PickupPairs.Color;
+        pickup.MaxHp = _level.PickupPairs.Hp;
+        pickup.Speed = _level.PickupPairs.Speed;
         pickup.UpgradeType = pickupId;
         pickup.PickupKind = pickupConfig.Kind;
         pickup.DisplayName = pickupConfig.Name;
@@ -498,6 +608,34 @@ public partial class BattleScreen : Control
         pickup.Destroyed += OnPickupDestroyed;
 
         _battleArea.AddChild(pickup);
+    }
+
+    private void SpawnSoliderCrew(int count)
+    {
+        for (int i = 0; i < count; i += 1)
+        {
+            Control solider = _soliderScene.Instantiate<Control>();
+            solider.Position = GetSoliderFollowerPosition(_soliderCount, solider.Size * 0.5f);
+            _soliderCount += 1;
+            _playerRig.AddChild(solider);
+        }
+    }
+
+    private Vector2 GetSoliderFollowerPosition(int index, Vector2 soliderHalfSize)
+    {
+        Vector2 heroCenter = new(0.0f, 784.0f);
+        float followDistance = Mathf.Max(0.0f, _level.Objects.SoliderFollowDistance);
+        int slot = index % SoliderFollowerSlots.Length;
+        int ring = index / SoliderFollowerSlots.Length;
+        Vector2 slotDirection = SoliderFollowerSlots[slot];
+        Vector2 centerOffset = slotDirection * followDistance;
+
+        if (ring > 0)
+        {
+            centerOffset += slotDirection.Normalized() * followDistance * 0.5f * ring;
+        }
+
+        return heroCenter + centerOffset - soliderHalfSize;
     }
 
     private float GetLaneX(int laneIndex)
@@ -528,6 +666,7 @@ public partial class BattleScreen : Control
             case "bullet_add":
                 int bullets = Mathf.Max(1, Mathf.RoundToInt(pickup.Value));
                 _temporaryBulletAdd += bullets;
+                SpawnSoliderCrew(bullets);
                 feedbackText = $"+{bullets} BULLET";
                 break;
             case "coins":
@@ -540,8 +679,10 @@ public partial class BattleScreen : Control
                 feedbackText = $"ATK x{_temporaryAttackMultiplier:0.0}";
                 break;
             case "turret_mult":
+            case "turrent_mult":
                 _temporaryTurretMultiplier *= Mathf.Max(1.0f, pickup.Value);
-                feedbackText = $"TURRET x{_temporaryTurretMultiplier:0.0}";
+                int turretLevel = UpgradeTurretVisual();
+                feedbackText = $"TURRET Lv{turretLevel} x{_temporaryTurretMultiplier:0.0}";
                 break;
             case "explosive":
                 _temporaryExplosiveRadius = Mathf.Max(_temporaryExplosiveRadius, _level.Player.ExplosiveRadius * Mathf.Max(1.0f, pickup.Value));
@@ -622,11 +763,18 @@ public partial class BattleScreen : Control
     {
         _waveTimeline.Clear();
         _nextWaveEventIndex = 0;
+        _nextPickupPairIndex = 0;
+        _nextPickupPairTime = _level.PickupPairs.StartTime;
         _battleTime = 0.0f;
         _waveCompleted = false;
 
         foreach (LevelConfig.TimelineEventConfig item in _level.Timeline)
         {
+            if (item.Type == "pickup")
+            {
+                continue;
+            }
+
             WaveSpawnKind kind = item.Type == "pickup" ? WaveSpawnKind.Pickup : WaveSpawnKind.Enemy;
             int laneIndex = _level.ResolveLaneIndex(item.Track, item.Lane);
             _waveTimeline.Add(new WaveSpawnEvent(item.Time, kind, laneIndex, item.Track, item.Enemy, item.Pickup, item.Count));
@@ -644,10 +792,6 @@ public partial class BattleScreen : Control
             {
                 SpawnEnemy(spawnEvent.LaneIndex, spawnEvent.TrackId, spawnEvent.EnemyType, spawnEvent.Count);
             }
-            else
-            {
-                SpawnPickup(spawnEvent.PickupType);
-            }
 
             _nextWaveEventIndex += 1;
         }
@@ -659,6 +803,29 @@ public partial class BattleScreen : Control
         }
     }
 
+    private void RunPickupPairSchedule()
+    {
+        LevelConfig.PickupPairConfig schedule = _level.PickupPairs;
+        if (schedule.Interval <= 0.0f || _battleTime < schedule.StartTime || _battleTime > schedule.EndTime)
+        {
+            return;
+        }
+
+        while (_battleTime >= _nextPickupPairTime && _nextPickupPairTime <= schedule.EndTime)
+        {
+            SpawnPickupPair(_nextPickupPairIndex);
+            _nextPickupPairIndex += 1;
+            _nextPickupPairTime += schedule.Interval;
+        }
+    }
+
+    private void SpawnPickupPair(int pairIndex)
+    {
+        LevelConfig.PickupPairOptionConfig pair = _level.PickupPairs.GetOption(pairIndex);
+        SpawnPickup(pair.Left, 0);
+        SpawnPickup(pair.Right, 1);
+    }
+
     private void StartBossPhase()
     {
         if (_bossSpawned || _battleEnded)
@@ -668,6 +835,7 @@ public partial class BattleScreen : Control
 
         ClearRemainingWaveObjects();
         SpawnBoss();
+        ResetBossShockwaveAttacks();
         _phase = BattlePhase.Boss;
         _bossSpawned = true;
         ShowBanner("BOSS INCOMING", new Color(1.0f, 0.56f, 0.26f, 1.0f));
@@ -678,7 +846,7 @@ public partial class BattleScreen : Control
     {
         foreach (Node child in _battleArea.GetChildren())
         {
-            if (child is Enemy or Pickup)
+            if (child is Enemy or Pickup or Shockwave)
             {
                 child.QueueFree();
             }
@@ -690,44 +858,161 @@ public partial class BattleScreen : Control
         _boss = InstantiateTypedOrFallback<Boss>(_bossScene, BossScenePath);
         _boss.Position = new Vector2(_level.Boss.SpawnX, _level.Boss.SpawnY);
         _boss.Size = new Vector2(_level.Boss.Width, _level.Boss.Height);
-        _boss.Color = new Color(0.42f, 0.28f, 0.2f, 1.0f);
         _boss.MaxHp = _level.Boss.MaxHp;
+        _boss.DamagePerHit = _level.Boss.DamagePerHit;
         _boss.DisplayName = _level.Boss.Name;
-        _boss.ConfigureAttack(_level.Boss.AttackInterval, _level.Boss.InitialAttackDelay, _level.Boss.WarningDelay, _level.Boss.AttackDamage);
         _boss.DefeatedReached += OnBossDefeated;
         _boss.Defeated += OnBossDefeated;
         _boss.PhaseChanged += OnBossPhaseChanged;
-        _boss.LaneWarningStarted += OnBossLaneWarningStarted;
-        _boss.LaneAttackResolved += OnBossLaneAttackResolved;
         _battleArea.AddChild(_boss);
-        _boss.SetAttacksEnabled(true);
     }
 
-    private void OnBossLaneWarningStarted(int laneIndex)
+    private void ResetBossShockwaveAttacks()
     {
-        float laneX = GetLaneX(laneIndex);
-        _bossWarningRect?.QueueFree();
-        _bossWarningRect = new ColorRect
-        {
-            Position = new Vector2(laneX - _level.Boss.WarningWidth * 0.5f, _level.Boss.WarningTopY),
-            Size = new Vector2(_level.Boss.WarningWidth, _level.Boss.WarningBottomY - _level.Boss.WarningTopY),
-            Color = new Color(1.0f, 0.16f, 0.08f, 0.38f),
-            MouseFilter = MouseFilterEnum.Ignore
-        };
-        _battleArea.AddChild(_bossWarningRect);
+        _bossAttackInProgress = false;
+        _activeBossShockwaves = 0;
+        _staggeredShockwavesRemaining = 0;
+        _nextStaggeredLaneIndex = 0;
+        _staggeredSpawnTimer = 0.0f;
+        _nextBossAttack = BossAttackKind.StaggeredShockwaves;
+        _currentBossAttack = BossAttackKind.StaggeredShockwaves;
+        _bossAttackCooldownTimer = _level.Boss.PatternStartDelay;
     }
 
-    private void OnBossLaneAttackResolved(int laneIndex, int damage)
+    private void RunBossShockwaveAttacks(float delta)
     {
-        float dangerX = GetLaneX(laneIndex);
-        _bossWarningRect?.QueueFree();
-        _bossWarningRect = null;
-
-        if (Mathf.Abs(_playerRig.Position.X - dangerX) <= _level.Boss.DangerRadius)
+        if (_bossDefeatHandled || _battleEnded)
         {
-            DamageTrainWithFeedback(damage, new Vector2(dangerX - 58.0f, 704.0f), "Boss Strike");
-            CheckFailure();
+            return;
         }
+
+        if (_bossAttackInProgress)
+        {
+            RunActiveBossShockwaveAttack(delta);
+            return;
+        }
+
+        _bossAttackCooldownTimer -= delta;
+        if (_bossAttackCooldownTimer <= 0.0f)
+        {
+            StartNextBossShockwaveAttack();
+        }
+    }
+
+    private void RunActiveBossShockwaveAttack(float delta)
+    {
+        if (_currentBossAttack == BossAttackKind.StaggeredShockwaves && _staggeredShockwavesRemaining > 0)
+        {
+            _staggeredSpawnTimer -= delta;
+            if (_staggeredSpawnTimer <= 0.0f)
+            {
+                SpawnNextStaggeredShockwave();
+            }
+        }
+
+        if (_staggeredShockwavesRemaining <= 0 && _activeBossShockwaves <= 0)
+        {
+            _bossAttackInProgress = false;
+            _bossAttackCooldownTimer = _level.Boss.BetweenAttackDelay;
+        }
+    }
+
+    private void StartNextBossShockwaveAttack()
+    {
+        _bossAttackInProgress = true;
+        _currentBossAttack = _nextBossAttack;
+
+        if (_currentBossAttack == BossAttackKind.StaggeredShockwaves)
+        {
+            _staggeredShockwavesRemaining = Mathf.Max(1, _level.Boss.StaggeredCount);
+            _nextStaggeredLaneIndex = 0;
+            _staggeredSpawnTimer = 0.0f;
+            _nextBossAttack = BossAttackKind.WideShockwave;
+            ShowBanner("STAGGERED SHOCKWAVES", new Color(1.0f, 0.72f, 0.28f, 1.0f));
+            SpawnNextStaggeredShockwave();
+        }
+        else
+        {
+            _nextBossAttack = BossAttackKind.StaggeredShockwaves;
+            ShowBanner("WIDE SHOCKWAVE", new Color(1.0f, 0.36f, 0.22f, 1.0f));
+            SpawnWideShockwave();
+        }
+    }
+
+    private void SpawnNextStaggeredShockwave()
+    {
+        int laneIndex = _nextStaggeredLaneIndex % 2;
+        _nextStaggeredLaneIndex += 1;
+        _staggeredShockwavesRemaining = Mathf.Max(0, _staggeredShockwavesRemaining - 1);
+        _staggeredSpawnTimer = Mathf.Max(0.05f, _level.Boss.StaggeredSpawnInterval);
+        SpawnShockwave(
+            _shockwaveSmallScene,
+            ShockwaveSmallScenePath,
+            new Vector2(GetLaneX(laneIndex) - _level.Boss.StaggeredWidth * 0.5f, _level.Boss.ShockwaveSpawnY),
+            new Vector2(_level.Boss.StaggeredWidth, _level.Boss.StaggeredHeight),
+            _level.Boss.StaggeredHp,
+            _level.Boss.StaggeredSpeed,
+            _level.Boss.StaggeredDamage,
+            new Color(1.0f, 0.45f, 0.18f, 0.92f));
+    }
+
+    private void SpawnWideShockwave()
+    {
+        float centerX = (_level.GetLaneX(0) + _level.GetLaneX(1)) * 0.5f;
+        SpawnShockwave(
+            _shockwaveBigScene,
+            ShockwaveBigScenePath,
+            new Vector2(centerX - _level.Boss.WideWidth * 0.5f, _level.Boss.ShockwaveSpawnY),
+            new Vector2(_level.Boss.WideWidth, _level.Boss.WideHeight),
+            _level.Boss.WideHp,
+            _level.Boss.WideSpeed,
+            _level.Boss.WideDamage,
+            new Color(0.94f, 0.18f, 0.14f, 0.95f));
+    }
+
+    private void SpawnShockwave(PackedScene scene, string scenePath, Vector2 position, Vector2 size, int hp, float speed, int damage, Color color)
+    {
+        Shockwave shockwave = InstantiateTypedOrFallback<Shockwave>(scene, scenePath);
+        bool usesPrefabSprite = CenterShockwaveSprite(shockwave, size);
+        shockwave.ZIndex = 2;
+        shockwave.Position = position;
+        shockwave.Size = size;
+        shockwave.Color = usesPrefabSprite ? new Color(color.R, color.G, color.B, 0.0f) : color;
+        shockwave.MaxHp = Mathf.Max(1, hp);
+        shockwave.Speed = Mathf.Max(1.0f, speed);
+        shockwave.Damage = Mathf.Max(0, damage);
+        shockwave.ImpactY = _level.Boss.ShockwaveImpactY;
+        shockwave.DisplayName = "冲击波";
+        shockwave.Destroyed += OnShockwaveDestroyed;
+        shockwave.ReachedTrain += OnShockwaveReachedTrain;
+        _activeBossShockwaves += 1;
+        _battleArea.AddChild(shockwave);
+    }
+
+    private static bool CenterShockwaveSprite(Shockwave shockwave, Vector2 size)
+    {
+        Sprite2D sprite = shockwave.GetNodeOrNull<Sprite2D>("Sprite2D");
+        if (sprite == null)
+        {
+            return false;
+        }
+
+        sprite.Position = size * 0.5f;
+        return true;
+    }
+
+    private void OnShockwaveDestroyed(Shockwave shockwave, Vector2 position)
+    {
+        _activeBossShockwaves = Mathf.Max(0, _activeBossShockwaves - 1);
+        SpawnBurst(position, new Color(1.0f, 0.72f, 0.36f, 0.88f));
+        ShowFloatingText("冲击波击破", position + new Vector2(-72.0f, -22.0f), new Color(1.0f, 0.86f, 0.44f, 1.0f), 17);
+    }
+
+    private void OnShockwaveReachedTrain(Shockwave shockwave)
+    {
+        _activeBossShockwaves = Mathf.Max(0, _activeBossShockwaves - 1);
+        DamageTrainWithFeedback(shockwave.Damage, new Vector2(shockwave.CenterX() - 70.0f, _level.TrainLineY - 44.0f), "Shockwave");
+        CheckFailure();
     }
 
     private void OnBossDefeated()
@@ -786,6 +1071,12 @@ public partial class BattleScreen : Control
         ClearCombatObjects();
         ClearFeedbackObjects();
         ResetTrainHitFeedback();
+
+        if (victory)
+        {
+            OnReturnToTrainPressed();
+            return;
+        }
 
         _resultPanel = new ColorRect
         {
@@ -861,17 +1152,22 @@ public partial class BattleScreen : Control
         {
             State.CompleteStation(_scrapReward, _fuelReward, _foodReward, _partsReward);
             _rewardApplied = true;
+            State.StopGameBgm();
+        }
+        else if (!_battleWon)
+        {
+            State.RecoverTrainForNextAttempt();
         }
 
         ClearTemporaryBuffs();
-        GetTree().ChangeSceneToFile("res://scenes/TrainScreen.tscn");
+        GetTree().ChangeSceneToFile(_battleWon ? EndMenuScenePath : TrainScreenScenePath);
     }
 
     private void ClearCombatObjects()
     {
         foreach (Node child in _battleArea.GetChildren())
         {
-            if (child is Enemy or Pickup or Bullet or Boss)
+            if (child is Enemy or Pickup or Shockwave or Bullet or Boss)
             {
                 child.QueueFree();
             }

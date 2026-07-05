@@ -2,6 +2,8 @@ using Godot;
 
 public partial class GameManager : Node
 {
+    private const string BattleBgmPath = "res://resource/music/bg.mp3";
+
     public int Scrap { get; private set; } = 100;
     public int Fuel { get; private set; } = 50;
     public int Food { get; private set; } = 30;
@@ -11,6 +13,43 @@ public partial class GameManager : Node
     public int CurrentStation { get; private set; } = 1;
     public int TrainMaxHp { get; private set; } = 100;
     public int TrainCurrentHp { get; private set; } = 100;
+    private AudioStreamPlayer _bgmPlayer = null!;
+
+    public override void _Ready()
+    {
+        _bgmPlayer = new AudioStreamPlayer
+        {
+            Name = "BgmPlayer",
+            Stream = GD.Load<AudioStream>(BattleBgmPath),
+            Bus = "Master"
+        };
+        AddChild(_bgmPlayer);
+
+        if (_bgmPlayer.Stream is AudioStreamMP3 mp3Stream)
+        {
+            mp3Stream.Loop = true;
+        }
+    }
+
+    public void PlayGameBgm()
+    {
+        if (_bgmPlayer == null || _bgmPlayer.Stream == null || _bgmPlayer.Playing)
+        {
+            return;
+        }
+
+        _bgmPlayer.Play();
+    }
+
+    public void StopGameBgm()
+    {
+        if (_bgmPlayer == null || !_bgmPlayer.Playing)
+        {
+            return;
+        }
+
+        _bgmPlayer.Stop();
+    }
 
     public int GetCannonUpgradeCost()
     {
@@ -40,6 +79,19 @@ public partial class GameManager : Node
     public void HealTrain(int amount)
     {
         TrainCurrentHp = Mathf.Min(TrainMaxHp, TrainCurrentHp + amount);
+    }
+
+    public void RecoverTrainForNextAttempt()
+    {
+        TrainCurrentHp = TrainMaxHp;
+    }
+
+    public void PrepareBattleAttempt()
+    {
+        if (TrainCurrentHp <= 0)
+        {
+            RecoverTrainForNextAttempt();
+        }
     }
 
     public void CompleteStation(int scrapReward, int fuelReward, int foodReward, int partsReward)

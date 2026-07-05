@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://dbr6jaf65w4h2"]
+
+[ext_resource type="Texture2D" uid="uid://c7yweljto5tj0" path="res://resource/figure/wave/wave_big.png" id="1_wave_big_texture"]
+[ext_resource type="Script" uid="uid://c7mpwof0uv2q2" path="res://scripts/Shockwave.cs" id="2_shockwave_script"]
+
+[node name="WaveBig" type="ColorRect" unique_id=1077648265]
+z_index = 2
+offset_right = 330.0
+offset_bottom = 114.0
+mouse_filter = 2
+color = Color(0.94, 0.18, 0.14, 0)
+script = ExtResource("2_shockwave_script")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1248606190]
+position = Vector2(166.566, 57.644)
+scale = Vector2(0.21540888, 0.11202345)
+texture = ExtResource("1_wave_big_texture")

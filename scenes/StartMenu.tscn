@@ -1,0 +1,39 @@
+[gd_scene load_steps=3 format=3 uid="uid://bqlyqqstartm"]
+
+[ext_resource type="Texture2D" uid="uid://dggw5uukhleu3" path="res://resource/start_bg.png" id="1_start_bg"]
+[ext_resource type="Script" path="res://scripts/StartMenu.cs" id="2_start_menu_script"]
+
+[node name="StartMenu" type="Control" unique_id=1951369249]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 540.0
+offset_bottom = 960.0
+mouse_filter = 2
+script = ExtResource("2_start_menu_script")
+
+[node name="Background" type="TextureRect" parent="." unique_id=1222521348]
+layout_mode = 0
+offset_right = 540.0
+offset_bottom = 960.0
+mouse_filter = 2
+texture = ExtResource("1_start_bg")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="StartButton" type="Button" parent="." unique_id=1093408546]
+layout_mode = 0
+offset_left = 155.0
+offset_top = 738.0
+offset_right = 405.0
+offset_bottom = 798.0
+theme_override_font_sizes/font_size = 28
+text = "开始游戏"
+
+[node name="QuitButton" type="Button" parent="." unique_id=592066045]
+layout_mode = 0
+offset_left = 155.0
+offset_top = 818.0
+offset_right = 405.0
+offset_bottom = 878.0
+theme_override_font_sizes/font_size = 28
+text = "退出游戏"

@@ -51,6 +51,7 @@ public partial class TrainScreen : Control
 
     private void OnGoBattlePressed()
     {
+        State.PrepareBattleAttempt();
         GetTree().ChangeSceneToFile("res://scenes/BattleScreen.tscn");
     }
 }

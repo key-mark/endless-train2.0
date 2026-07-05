@@ -5,14 +5,14 @@
 
 [node name="Bullet" type="ColorRect" unique_id=1223297118]
 z_index = 2
-offset_right = 10.0
-offset_bottom = 20.0
+offset_right = 16.0
+offset_bottom = 35.0
 mouse_filter = 2
 color = Color(1, 0.9411765, 0.34901962, 0.011764706)
 script = ExtResource("1_bullet_script")
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1718091172]
-position = Vector2(5.000001, 14.999999)
+position = Vector2(7.812337, 18.008547)
 rotation = -1.5707964
-scale = Vector2(0.02949117, 0.029538997)
+scale = Vector2(0.035178404, 0.044618543)
 texture = ExtResource("2_d4b24")

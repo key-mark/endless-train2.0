@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://bag1t4sjal5r"]
 
-[ext_resource type="PackedScene" path="res://scenes/TrainScreen.tscn" id="1_train"]
+[ext_resource type="PackedScene" uid="uid://qe7t26wik4wc" path="res://scenes/OpeningVideo.tscn" id="1_opening_video"]
 
 [node name="Main" type="Control" unique_id=420722776]
 layout_mode = 3
@@ -10,5 +10,5 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="TrainScreen" parent="." unique_id=762434022 instance=ExtResource("1_train")]
+[node name="OpeningVideo" parent="." unique_id=762434022 instance=ExtResource("1_opening_video")]
 layout_mode = 1

@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3 uid="uid://bh67xe12emeol"]
+
+[ext_resource type="Texture2D" uid="uid://dexfbd8gwgvm8" path="res://resource/figure/wave/wave_small.png" id="1_s55gs"]
+[ext_resource type="Script" uid="uid://c7mpwof0uv2q2" path="res://scripts/Shockwave.cs" id="2_shockwave_script"]
+
+[node name="WaveSmall" type="ColorRect" unique_id=1045420925]
+z_index = 2
+offset_right = 96.0
+offset_bottom = 38.0
+mouse_filter = 2
+color = Color(1, 0.45098, 0.180392, 0)
+script = ExtResource("2_shockwave_script")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1354698161]
+position = Vector2(48, 19)
+rotation = 1.5707964
+scale = Vector2(0.2708764, 0.2755546)
+texture = ExtResource("1_s55gs")

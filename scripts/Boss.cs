@@ -18,6 +18,7 @@ public partial class Boss : ColorRect
     private const int SegmentCount = 3;
 
     [Export] public int MaxHp { get; set; } = 300;
+    [Export] public int DamagePerHit { get; set; } = 5;
     [Export] public string DisplayName { get; set; } = "Station Breaker";
 
     public event Action DefeatedReached;
@@ -129,7 +130,8 @@ public partial class Boss : ColorRect
             return;
         }
 
-        Hp = Mathf.Max(0, Hp - damage);
+        int appliedDamage = DamagePerHit > 0 ? DamagePerHit : damage;
+        Hp = Mathf.Max(0, Hp - appliedDamage);
         _hitFlashTimer = 0.14f;
         _hpLabel.Text = GetHpText();
         RefreshHpBars();

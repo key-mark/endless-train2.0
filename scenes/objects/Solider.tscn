@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://b3v4dgfw5p13a"]
+
+[ext_resource type="Texture2D" path="res://resource/figure/solider.png" id="1_solider_texture"]
+
+[node name="Solider" type="Control" unique_id=1685870974]
+z_index = 4
+layout_mode = 3
+anchors_preset = 0
+offset_right = 28.0
+offset_bottom = 45.0
+mouse_filter = 2
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1591806630]
+z_index = 2
+position = Vector2(14, 22.5)
+scale = Vector2(0.12, 0.12)
+texture = ExtResource("1_solider_texture")

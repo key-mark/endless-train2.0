@@ -24,6 +24,7 @@ public sealed class LevelConfig
     public ObjectConfig Objects { get; } = new();
     public RewardConfig Rewards { get; } = new();
     public BossConfig Boss { get; } = new();
+    public PickupPairConfig PickupPairs { get; } = new();
     public Dictionary<string, EnemyTypeConfig> EnemyTypes { get; } = new();
     public Dictionary<string, PickupConfig> Pickups { get; } = new();
     public List<TimelineEventConfig> Timeline { get; } = new();
@@ -31,6 +32,12 @@ public sealed class LevelConfig
     public static LevelConfig LoadSelected()
     {
         string levelPath = ReadSelectedLevelPath();
+        return LoadFromPath(levelPath);
+    }
+
+    public static LevelConfig LoadForStation(int station)
+    {
+        string levelPath = ReadLevelPathForStation(station);
         return LoadFromPath(levelPath);
     }
 
@@ -93,6 +100,11 @@ public sealed class LevelConfig
 
     private static string ReadSelectedLevelPath()
     {
+        return ReadLevelPathForStation(1);
+    }
+
+    private static string ReadLevelPathForStation(int station)
+    {
         const string fallbackPath = "res://data/levels/demo_001.json";
         if (!FileAccess.FileExists(LevelSelectPath))
         {
@@ -110,10 +122,15 @@ public sealed class LevelConfig
         using JsonDocument document = JsonDocument.Parse(json);
         JsonElement root = document.RootElement;
         string defaultLevel = ReadString(root, "default_level", "demo_001");
+        int requestedStation = Math.Max(1, station);
 
         if (TryGet(root, "levels", out JsonElement levels) && levels.ValueKind == JsonValueKind.Array)
         {
             string firstPath = fallbackPath;
+            string defaultPath = fallbackPath;
+            bool hasFirstPath = false;
+            bool hasDefaultPath = false;
+            int levelIndex = 0;
             foreach (JsonElement level in levels.EnumerateArray())
             {
                 string id = ReadString(level, "id", "");
@@ -123,18 +140,28 @@ public sealed class LevelConfig
                     continue;
                 }
 
-                if (firstPath == fallbackPath)
+                if (!hasFirstPath)
                 {
                     firstPath = path;
+                    hasFirstPath = true;
                 }
 
                 if (id == defaultLevel)
                 {
+                    defaultPath = path;
+                    hasDefaultPath = true;
+                }
+
+                int stationNumber = ReadInt(level, "station", levelIndex + 1);
+                if (stationNumber == requestedStation)
+                {
                     return path;
                 }
+
+                levelIndex += 1;
             }
 
-            return firstPath;
+            return hasDefaultPath ? defaultPath : firstPath;
         }
 
         return fallbackPath;
@@ -239,6 +266,11 @@ public sealed class LevelConfig
                 pickup.Read(property.Value);
                 config.Pickups[property.Name] = pickup;
             }
+        }
+
+        if (TryGet(root, "pickup_pairs", out JsonElement pickupPairs))
+        {
+            config.PickupPairs.Read(pickupPairs);
         }
 
         if (TryGet(root, "timeline", out JsonElement timeline) && timeline.ValueKind == JsonValueKind.Array)
@@ -396,6 +428,8 @@ public sealed class LevelConfig
         public float BulletSpeed { get; private set; } = 620.0f;
         public float BulletWidth { get; private set; } = 10.0f;
         public float BulletHeight { get; private set; } = 20.0f;
+        public float BulletDestroyDistanceAboveTop { get; private set; } = 48.0f;
+        public float SoliderFollowDistance { get; private set; } = 18.0f;
 
         public void Read(JsonElement element)
         {
@@ -413,6 +447,8 @@ public sealed class LevelConfig
             BulletSpeed = ReadFloat(element, "bullet_speed", BulletSpeed);
             BulletWidth = ReadFloat(element, "bullet_width", BulletWidth);
             BulletHeight = ReadFloat(element, "bullet_height", BulletHeight);
+            BulletDestroyDistanceAboveTop = ReadFloat(element, "bullet_destroy_distance_above_top", BulletDestroyDistanceAboveTop);
+            SoliderFollowDistance = ReadFloat(element, "solider_follow_distance", SoliderFollowDistance);
         }
     }
 
@@ -496,6 +532,103 @@ public sealed class LevelConfig
         }
     }
 
+    public sealed class PickupPairConfig
+    {
+        public float StartTime { get; private set; } = 6.0f;
+        public float Interval { get; private set; } = 10.0f;
+        public float EndTime { get; private set; } = 76.0f;
+        public int Hp { get; private set; } = 130;
+        public float Speed { get; private set; } = 112.0f;
+        public Color Color { get; private set; } = new(0.48f, 0.84f, 1.0f, 0.56f);
+        public List<PickupPairOptionConfig> Options { get; } = new()
+        {
+            new("attack_add", "fire_rate"),
+            new("coins", "heal"),
+            new("bullet_add", "attack_mult"),
+            new("turret_mult", "explosive")
+        };
+
+        public void Read(JsonElement element)
+        {
+            StartTime = ReadFloat(element, "start_time", StartTime);
+            Interval = ReadFloat(element, "interval", Interval);
+            EndTime = ReadFloat(element, "end_time", EndTime);
+            Hp = ReadInt(element, "hp", Hp);
+            Speed = ReadFloat(element, "speed", Speed);
+            Color = ReadColor(element, "color", Color);
+
+            if (TryGet(element, "options", out JsonElement options) && options.ValueKind == JsonValueKind.Array)
+            {
+                Options.Clear();
+                foreach (JsonElement option in options.EnumerateArray())
+                {
+                    if (PickupPairOptionConfig.TryFromJson(option, out PickupPairOptionConfig pair))
+                    {
+                        Options.Add(pair);
+                    }
+                }
+            }
+
+            if (Options.Count == 0)
+            {
+                Options.Add(new PickupPairOptionConfig("attack_add", "fire_rate"));
+            }
+        }
+
+        public PickupPairOptionConfig GetOption(int index)
+        {
+            int optionIndex = index % Options.Count;
+            if (optionIndex < 0)
+            {
+                optionIndex += Options.Count;
+            }
+
+            return Options[optionIndex];
+        }
+    }
+
+    public sealed class PickupPairOptionConfig
+    {
+        public PickupPairOptionConfig(string left, string right)
+        {
+            Left = left;
+            Right = right;
+        }
+
+        public string Left { get; }
+        public string Right { get; }
+
+        public static bool TryFromJson(JsonElement element, out PickupPairOptionConfig pair)
+        {
+            pair = new PickupPairOptionConfig("", "");
+            if (element.ValueKind != JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            List<string> pickupIds = new();
+            foreach (JsonElement item in element.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String)
+                {
+                    string pickupId = item.GetString() ?? "";
+                    if (!string.IsNullOrWhiteSpace(pickupId))
+                    {
+                        pickupIds.Add(pickupId);
+                    }
+                }
+            }
+
+            if (pickupIds.Count < 2)
+            {
+                return false;
+            }
+
+            pair = new PickupPairOptionConfig(pickupIds[0], pickupIds[1]);
+            return true;
+        }
+    }
+
     public sealed class TimelineEventConfig
     {
         public float Time { get; init; }
@@ -525,6 +658,7 @@ public sealed class LevelConfig
     {
         public string Name { get; private set; } = "Armored Locomotive";
         public List<int> Bars { get; } = new() { 160, 180, 220 };
+        public int DamagePerHit { get; private set; } = 5;
         public float SpawnX { get; private set; } = 140.0f;
         public float SpawnY { get; private set; } = 122.0f;
         public float Width { get; private set; } = 260.0f;
@@ -537,6 +671,22 @@ public sealed class LevelConfig
         public float WarningWidth { get; private set; } = 110.0f;
         public float DangerRadius { get; private set; } = 58.0f;
         public int AttackDamage { get; private set; } = 18;
+        public float PatternStartDelay { get; private set; } = 1.2f;
+        public float BetweenAttackDelay { get; private set; } = 1.3f;
+        public float ShockwaveSpawnY { get; private set; } = -72.0f;
+        public float ShockwaveImpactY { get; private set; } = 845.0f;
+        public int StaggeredCount { get; private set; } = 6;
+        public float StaggeredSpawnInterval { get; private set; } = 0.55f;
+        public int StaggeredHp { get; private set; } = 42;
+        public float StaggeredSpeed { get; private set; } = 145.0f;
+        public int StaggeredDamage { get; private set; } = 10;
+        public float StaggeredWidth { get; private set; } = 96.0f;
+        public float StaggeredHeight { get; private set; } = 38.0f;
+        public int WideHp { get; private set; } = 180;
+        public float WideSpeed { get; private set; } = 190.0f;
+        public int WideDamage { get; private set; } = 24;
+        public float WideWidth { get; private set; } = 330.0f;
+        public float WideHeight { get; private set; } = 56.0f;
 
         public int MaxHp
         {
@@ -555,6 +705,7 @@ public sealed class LevelConfig
         public void Read(JsonElement element)
         {
             Name = ReadString(element, "name", Name);
+            DamagePerHit = ReadInt(element, "boss_damage_per_hit", DamagePerHit);
             SpawnX = ReadFloat(element, "spawn_x", SpawnX);
             SpawnY = ReadFloat(element, "spawn_y", SpawnY);
             Width = ReadFloat(element, "width", Width);
@@ -567,6 +718,22 @@ public sealed class LevelConfig
             WarningWidth = ReadFloat(element, "warning_width", WarningWidth);
             DangerRadius = ReadFloat(element, "danger_radius", DangerRadius);
             AttackDamage = ReadInt(element, "attack_damage", AttackDamage);
+            PatternStartDelay = ReadFloat(element, "pattern_start_delay", PatternStartDelay);
+            BetweenAttackDelay = ReadFloat(element, "between_attack_delay", BetweenAttackDelay);
+            ShockwaveSpawnY = ReadFloat(element, "shockwave_spawn_y", ShockwaveSpawnY);
+            ShockwaveImpactY = ReadFloat(element, "shockwave_impact_y", ShockwaveImpactY);
+            StaggeredCount = ReadInt(element, "staggered_count", StaggeredCount);
+            StaggeredSpawnInterval = ReadFloat(element, "staggered_spawn_interval", StaggeredSpawnInterval);
+            StaggeredHp = ReadInt(element, "staggered_hp", StaggeredHp);
+            StaggeredSpeed = ReadFloat(element, "staggered_speed", StaggeredSpeed);
+            StaggeredDamage = ReadInt(element, "staggered_damage", StaggeredDamage);
+            StaggeredWidth = ReadFloat(element, "staggered_width", StaggeredWidth);
+            StaggeredHeight = ReadFloat(element, "staggered_height", StaggeredHeight);
+            WideHp = ReadInt(element, "wide_hp", WideHp);
+            WideSpeed = ReadFloat(element, "wide_speed", WideSpeed);
+            WideDamage = ReadInt(element, "wide_damage", WideDamage);
+            WideWidth = ReadFloat(element, "wide_width", WideWidth);
+            WideHeight = ReadFloat(element, "wide_height", WideHeight);
 
             if (TryGet(element, "bars", out JsonElement bars) && bars.ValueKind == JsonValueKind.Array)
             {
