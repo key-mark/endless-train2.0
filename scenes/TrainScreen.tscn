@@ -1,0 +1,88 @@
+[gd_scene format=3]
+
+[node name="TrainScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 0
+offset_right = 540.0
+offset_bottom = 960.0
+color = Color(0.08, 0.1, 0.13, 1)
+
+[node name="Title" type="Label" parent="."]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 40.0
+offset_right = 500.0
+offset_bottom = 92.0
+theme_override_font_sizes/font_size = 34
+text = "Endless Train SLG Demo"
+horizontal_alignment = 1
+
+[node name="ResourcePlaceholder" type="ColorRect" parent="."]
+layout_mode = 0
+offset_left = 32.0
+offset_top = 122.0
+offset_right = 508.0
+offset_bottom = 210.0
+color = Color(0.16, 0.19, 0.24, 1)
+
+[node name="ResourceLabel" type="Label" parent="ResourcePlaceholder"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 18.0
+offset_right = 460.0
+offset_bottom = 70.0
+theme_override_font_sizes/font_size = 22
+text = "Resources: Scrap / Fuel / Food / Parts"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TrainPreviewPlaceholder" type="ColorRect" parent="."]
+layout_mode = 0
+offset_left = 32.0
+offset_top = 260.0
+offset_right = 508.0
+offset_bottom = 680.0
+color = Color(0.12, 0.15, 0.18, 1)
+
+[node name="TrainPreviewLabel" type="Label" parent="TrainPreviewPlaceholder"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 24.0
+offset_right = 456.0
+offset_bottom = 72.0
+theme_override_font_sizes/font_size = 24
+text = "Train Preview Placeholder"
+horizontal_alignment = 1
+
+[node name="TrainBodyPlaceholder" type="ColorRect" parent="TrainPreviewPlaceholder"]
+layout_mode = 0
+offset_left = 58.0
+offset_top = 230.0
+offset_right = 418.0
+offset_bottom = 310.0
+color = Color(0.29, 0.34, 0.4, 1)
+
+[node name="CannonUpgradeButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 64.0
+offset_top = 740.0
+offset_right = 476.0
+offset_bottom = 802.0
+theme_override_font_sizes/font_size = 22
+text = "Upgrade Cannon"
+
+[node name="GoBattleButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 64.0
+offset_top = 824.0
+offset_right = 476.0
+offset_bottom = 894.0
+theme_override_font_sizes/font_size = 22
+text = "Go to Abandoned Station"

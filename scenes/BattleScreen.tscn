@@ -1,0 +1,76 @@
+[gd_scene format=3]
+
+[node name="BattleScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="BattleArea540x960" type="ColorRect" parent="."]
+layout_mode = 0
+offset_right = 540.0
+offset_bottom = 960.0
+color = Color(0.07, 0.08, 0.1, 1)
+
+[node name="BattleAreaLabel" type="Label" parent="BattleArea540x960"]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 24.0
+offset_right = 500.0
+offset_bottom = 70.0
+theme_override_font_sizes/font_size = 22
+text = "540 x 960 Portrait Battle Area"
+horizontal_alignment = 1
+
+[node name="LeftTrack" type="ColorRect" parent="BattleArea540x960"]
+layout_mode = 0
+offset_left = 171.0
+offset_top = 100.0
+offset_right = 179.0
+offset_bottom = 820.0
+color = Color(0.55, 0.62, 0.68, 1)
+
+[node name="RightTrack" type="ColorRect" parent="BattleArea540x960"]
+layout_mode = 0
+offset_left = 361.0
+offset_top = 100.0
+offset_right = 369.0
+offset_bottom = 820.0
+color = Color(0.55, 0.62, 0.68, 1)
+
+[node name="LeftTrackGuide" type="ColorRect" parent="BattleArea540x960"]
+layout_mode = 0
+offset_left = 125.0
+offset_top = 100.0
+offset_right = 225.0
+offset_bottom = 820.0
+color = Color(0.18, 0.23, 0.27, 0.55)
+
+[node name="RightTrackGuide" type="ColorRect" parent="BattleArea540x960"]
+layout_mode = 0
+offset_left = 315.0
+offset_top = 100.0
+offset_right = 415.0
+offset_bottom = 820.0
+color = Color(0.18, 0.23, 0.27, 0.55)
+
+[node name="TrainBasePlaceholder" type="ColorRect" parent="BattleArea540x960"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 820.0
+offset_right = 520.0
+offset_bottom = 940.0
+color = Color(0.28, 0.32, 0.38, 1)
+
+[node name="TrainBaseLabel" type="Label" parent="TrainBasePlaceholder"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 36.0
+offset_right = 476.0
+offset_bottom = 84.0
+theme_override_font_sizes/font_size = 24
+text = "Bottom Train Base Placeholder"
+horizontal_alignment = 1
+vertical_alignment = 1
