@@ -476,7 +476,7 @@ Boss 采用“本体 + 冲击波”的设计，玩家命中 Boss 本体是固定
 - 开始菜单直接进战斗，不先进列车主界面
 - 失败后回列车主界面，胜利后去 Endmenu
 - BGM 会从点击开始游戏后持续到击败 Boss
-- `hero_damage` 当前是 `100`，明显偏测试值
+- 当前基础火力已经收敛回 Demo 可玩档，后续优先从 `player.hero_damage` 和 `player.turret_damage` 微调手感
 - `bullet_add` 会生成围绕英雄的小兵
 - `turret_mult` 不只是倍率提升，还会切炮塔贴图等级
 - 项目当前没有存档，所有状态只保存在本次运行的 `GameManager` 中
