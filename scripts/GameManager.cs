@@ -37,6 +37,15 @@ public partial class GameManager : Node
         TrainCurrentHp = Mathf.Min(TrainMaxHp, TrainCurrentHp + amount);
     }
 
+    public void CompleteStation(int scrapReward, int fuelReward, int foodReward, int partsReward)
+    {
+        Scrap += scrapReward;
+        Fuel += fuelReward;
+        Food += foodReward;
+        Parts += partsReward;
+        CurrentStation += 1;
+    }
+
     public bool TryUpgradeCannon()
     {
         int cost = GetCannonUpgradeCost();

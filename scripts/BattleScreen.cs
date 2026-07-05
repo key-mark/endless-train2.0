@@ -32,6 +32,11 @@ public partial class BattleScreen : Control
     private const int EnemyTrainDamage = 8;
     private const int BossMaxHp = 300;
     private const int BossLaneDamage = 18;
+    private const int BaseScrapReward = 60;
+    private const int BaseFuelReward = 10;
+    private const int BaseFoodReward = 8;
+    private const int BasePartsReward = 1;
+    private const int ScrapPerKillReward = 2;
     private const int AttackAddAmount = 5;
     private const float FireRateStep = 0.08f;
     private const int HealAmount = 18;
@@ -58,6 +63,12 @@ public partial class BattleScreen : Control
     private bool _waveCompleted;
     private bool _bossSpawned;
     private bool _battleEnded;
+    private bool _battleWon;
+    private bool _rewardApplied;
+    private int _scrapReward;
+    private int _fuelReward;
+    private int _foodReward;
+    private int _partsReward;
     private Boss _boss = null!;
     private ColorRect _bossWarningRect = null!;
     private ColorRect _resultPanel = null!;
@@ -614,6 +625,8 @@ public partial class BattleScreen : Control
         }
 
         _battleEnded = true;
+        _battleWon = victory;
+        CalculateRewards(victory);
         _phase = BattlePhase.Ended;
         _bossWarningRect?.QueueFree();
         _bossWarningRect = null;
@@ -622,18 +635,18 @@ public partial class BattleScreen : Control
         _resultPanel = new ColorRect
         {
             Position = new Vector2(70.0f, 320.0f),
-            Size = new Vector2(400.0f, 220.0f),
+            Size = new Vector2(400.0f, 330.0f),
             Color = victory
                 ? new Color(0.12f, 0.34f, 0.22f, 0.96f)
                 : new Color(0.34f, 0.12f, 0.12f, 0.96f),
-            MouseFilter = MouseFilterEnum.Ignore
+            MouseFilter = MouseFilterEnum.Stop
         };
 
         Label title = new Label
         {
-            Position = new Vector2(0.0f, 42.0f),
+            Position = new Vector2(0.0f, 26.0f),
             Size = new Vector2(_resultPanel.Size.X, 52.0f),
-            Text = victory ? "VICTORY" : "DEFEAT",
+            Text = victory ? "VICTORY REPORT" : "DEFEAT REPORT",
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore
@@ -643,11 +656,11 @@ public partial class BattleScreen : Control
 
         Label summary = new Label
         {
-            Position = new Vector2(24.0f, 108.0f),
-            Size = new Vector2(_resultPanel.Size.X - 48.0f, 74.0f),
+            Position = new Vector2(24.0f, 88.0f),
+            Size = new Vector2(_resultPanel.Size.X - 48.0f, 150.0f),
             Text = victory
-                ? $"Boss defeated\nKills: {_killCount}\nTrain HP: {State.TrainCurrentHp}/{State.TrainMaxHp}"
-                : $"Train destroyed\nKills: {_killCount}\nBoss fight failed",
+                ? $"Scrap +{_scrapReward}\nFuel +{_fuelReward}\nFood +{_foodReward}\nParts +{_partsReward}\nKills: {_killCount}"
+                : $"Scrap +0\nFuel +0\nFood +0\nParts +0\nKills: {_killCount}",
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore
@@ -655,8 +668,47 @@ public partial class BattleScreen : Control
         summary.AddThemeFontSizeOverride("font_size", 20);
         _resultPanel.AddChild(summary);
 
+        Button returnButton = new Button
+        {
+            Position = new Vector2(64.0f, 250.0f),
+            Size = new Vector2(272.0f, 56.0f),
+            Text = "Return to Train"
+        };
+        returnButton.AddThemeFontSizeOverride("font_size", 22);
+        returnButton.Pressed += OnReturnToTrainPressed;
+        _resultPanel.AddChild(returnButton);
+
         _battleArea.AddChild(_resultPanel);
         RefreshWaveStatus();
+    }
+
+    private void CalculateRewards(bool victory)
+    {
+        if (!victory)
+        {
+            _scrapReward = 0;
+            _fuelReward = 0;
+            _foodReward = 0;
+            _partsReward = 0;
+            return;
+        }
+
+        _scrapReward = BaseScrapReward + _killCount * ScrapPerKillReward;
+        _fuelReward = BaseFuelReward;
+        _foodReward = BaseFoodReward;
+        _partsReward = BasePartsReward;
+    }
+
+    private void OnReturnToTrainPressed()
+    {
+        if (_battleWon && !_rewardApplied)
+        {
+            State.CompleteStation(_scrapReward, _fuelReward, _foodReward, _partsReward);
+            _rewardApplied = true;
+        }
+
+        ClearTemporaryBuffs();
+        GetTree().ChangeSceneToFile("res://scenes/TrainScreen.tscn");
     }
 
     private void ClearCombatObjects()
