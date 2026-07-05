@@ -1,4 +1,5 @@
 using Godot;
+using System.Collections.Generic;
 
 public partial class BattleScreen : Control
 {
@@ -13,11 +14,10 @@ public partial class BattleScreen : Control
     private const float RightLaneX = 365.0f;
     private const float EnemySpawnY = -56.0f;
     private const float EnemySize = 44.0f;
-    private const float EnemySpawnInterval = 1.65f;
     private const float UpgradeTargetSpawnY = -64.0f;
     private const float UpgradeTargetSize = 50.0f;
-    private const float UpgradeTargetSpawnInterval = 4.8f;
     private const float TargetMissDestroyY = 870.0f;
+    private const float WaveDuration = 72.0f;
     private const float HeroHitLineY = 760.0f;
     private const float TrainHitLineY = 820.0f;
     private const float HeroHitDistance = 46.0f;
@@ -32,17 +32,18 @@ public partial class BattleScreen : Control
     private Label _weaponStatsLabel = null!;
     private Label _combatStatusLabel = null!;
     private Label _temporaryBuffLabel = null!;
+    private Label _waveStatusLabel = null!;
     private bool _isDragging;
     private float _shootTimer;
-    private float _enemySpawnTimer;
-    private float _upgradeTargetSpawnTimer;
+    private float _battleTime;
     private int _killCount;
-    private int _nextEnemyLaneIndex;
-    private int _nextUpgradeLaneIndex = 1;
     private int _nextUpgradeTypeIndex;
+    private int _nextWaveEventIndex;
     private int _temporaryAttackAdd;
     private int _temporaryFireRateStacks;
     private int _temporaryBulletAdd;
+    private bool _waveCompleted;
+    private readonly List<WaveSpawnEvent> _waveTimeline = new();
 
     private static readonly string[] UpgradeTypes =
     {
@@ -52,21 +53,44 @@ public partial class BattleScreen : Control
         "bullet_add"
     };
 
+    private enum WaveSpawnKind
+    {
+        Enemy,
+        UpgradeTarget
+    }
+
+    private sealed class WaveSpawnEvent
+    {
+        public WaveSpawnEvent(float time, WaveSpawnKind kind, int laneIndex, string upgradeType = "")
+        {
+            Time = time;
+            Kind = kind;
+            LaneIndex = laneIndex;
+            UpgradeType = upgradeType;
+        }
+
+        public float Time { get; }
+        public WaveSpawnKind Kind { get; }
+        public int LaneIndex { get; }
+        public string UpgradeType { get; }
+    }
+
     public override void _Ready()
     {
         _battleArea = GetNode<Control>("BattleArea540x960");
         _playerRig = GetNode<Control>("BattleArea540x960/PlayerRig");
+        _waveStatusLabel = GetNode<Label>("BattleArea540x960/BattleAreaLabel");
         _weaponStatsLabel = GetNode<Label>("BattleArea540x960/WeaponStatsLabel");
         _combatStatusLabel = GetNode<Label>("BattleArea540x960/CombatStatusLabel");
         _temporaryBuffLabel = GetNode<Label>("BattleArea540x960/TemporaryBuffLabel");
         ClearTemporaryBuffs();
+        BuildWaveTimeline();
         SetPlayerX(PlayerStartX);
         RefreshWeaponStats();
         RefreshCombatStatus();
         RefreshTemporaryBuffs();
+        RefreshWaveStatus();
         _shootTimer = GetFireInterval();
-        _enemySpawnTimer = 0.2f;
-        _upgradeTargetSpawnTimer = 2.0f;
     }
 
     public override void _Process(double delta)
@@ -78,25 +102,15 @@ public partial class BattleScreen : Control
             _shootTimer += GetFireInterval();
         }
 
-        _enemySpawnTimer -= (float)delta;
-        if (_enemySpawnTimer <= 0.0f)
-        {
-            SpawnEnemy();
-            _enemySpawnTimer += EnemySpawnInterval;
-        }
-
-        _upgradeTargetSpawnTimer -= (float)delta;
-        if (_upgradeTargetSpawnTimer <= 0.0f)
-        {
-            SpawnUpgradeTarget();
-            _upgradeTargetSpawnTimer += UpgradeTargetSpawnInterval;
-        }
+        _battleTime += (float)delta;
+        RunWaveTimeline();
 
         CheckEnemyLineDamage();
         RemoveMissedUpgradeTargets();
         RefreshWeaponStats();
         RefreshCombatStatus();
         RefreshTemporaryBuffs();
+        RefreshWaveStatus();
     }
 
     public override void _ExitTree()
@@ -163,6 +177,38 @@ public partial class BattleScreen : Control
             $"Current Station: {State.CurrentStation}";
     }
 
+    private void RefreshWaveStatus()
+    {
+        float displayTime = Mathf.Min(_battleTime, WaveDuration);
+        string phaseName = GetWavePhaseName(displayTime);
+        _waveStatusLabel.Text = $"Wave: {phaseName}  {displayTime:0}/{WaveDuration:0}s";
+    }
+
+    private string GetWavePhaseName(float time)
+    {
+        if (_waveCompleted)
+        {
+            return "Complete";
+        }
+
+        if (time < 10.0f)
+        {
+            return "Warmup";
+        }
+
+        if (time < 35.0f)
+        {
+            return "Pressure";
+        }
+
+        if (time < 60.0f)
+        {
+            return "Heavy";
+        }
+
+        return "Final Push";
+    }
+
     private void RefreshTemporaryBuffs()
     {
         _temporaryBuffLabel.Text =
@@ -198,10 +244,9 @@ public partial class BattleScreen : Control
         _battleArea.AddChild(bullet);
     }
 
-    private void SpawnEnemy()
+    private void SpawnEnemy(int laneIndex)
     {
-        float laneX = _nextEnemyLaneIndex % 2 == 0 ? LeftLaneX : RightLaneX;
-        _nextEnemyLaneIndex += 1;
+        float laneX = GetLaneX(laneIndex);
 
         Enemy enemy = new Enemy
         {
@@ -216,13 +261,9 @@ public partial class BattleScreen : Control
         _battleArea.AddChild(enemy);
     }
 
-    private void SpawnUpgradeTarget()
+    private void SpawnUpgradeTarget(int laneIndex, string upgradeType)
     {
-        float laneX = _nextUpgradeLaneIndex % 2 == 0 ? LeftLaneX : RightLaneX;
-        _nextUpgradeLaneIndex += 1;
-
-        string upgradeType = UpgradeTypes[_nextUpgradeTypeIndex % UpgradeTypes.Length];
-        _nextUpgradeTypeIndex += 1;
+        float laneX = GetLaneX(laneIndex);
 
         UpgradeTarget target = new UpgradeTarget
         {
@@ -236,6 +277,11 @@ public partial class BattleScreen : Control
         target.Destroyed += OnUpgradeTargetDestroyed;
 
         _battleArea.AddChild(target);
+    }
+
+    private float GetLaneX(int laneIndex)
+    {
+        return laneIndex % 2 == 0 ? LeftLaneX : RightLaneX;
     }
 
     private Color GetUpgradeColor(string upgradeType)
@@ -323,5 +369,91 @@ public partial class BattleScreen : Control
         _temporaryAttackAdd = 0;
         _temporaryFireRateStacks = 0;
         _temporaryBulletAdd = 0;
+    }
+
+    private void BuildWaveTimeline()
+    {
+        _waveTimeline.Clear();
+        _nextWaveEventIndex = 0;
+        _battleTime = 0.0f;
+        _waveCompleted = false;
+        _nextUpgradeTypeIndex = 0;
+
+        int laneIndex = 0;
+        for (float time = 1.5f; time < 10.0f; time += 3.2f)
+        {
+            AddEnemyEvent(time, laneIndex);
+            laneIndex += 1;
+        }
+
+        for (float time = 10.5f; time < 35.0f; time += 2.4f)
+        {
+            AddEnemyEvent(time, laneIndex);
+            laneIndex += 1;
+        }
+
+        AddUpgradeEvent(14.0f, 1);
+        AddUpgradeEvent(23.0f, 0);
+        AddUpgradeEvent(32.0f, 1);
+
+        int heavyIndex = 0;
+        for (float time = 35.0f; time < 60.0f; time += 1.9f)
+        {
+            AddEnemyEvent(time, laneIndex);
+            if (heavyIndex % 4 == 2)
+            {
+                AddEnemyEvent(time + 0.45f, laneIndex + 1);
+            }
+
+            laneIndex += 1;
+            heavyIndex += 1;
+        }
+
+        AddUpgradeEvent(42.0f, 0);
+        AddUpgradeEvent(53.0f, 1);
+
+        for (float time = 60.0f; time < 70.0f; time += 1.7f)
+        {
+            AddEnemyEvent(time, laneIndex);
+            laneIndex += 1;
+        }
+
+        AddUpgradeEvent(64.0f, 0);
+        _waveTimeline.Sort((left, right) => left.Time.CompareTo(right.Time));
+    }
+
+    private void AddEnemyEvent(float time, int laneIndex)
+    {
+        _waveTimeline.Add(new WaveSpawnEvent(time, WaveSpawnKind.Enemy, laneIndex));
+    }
+
+    private void AddUpgradeEvent(float time, int laneIndex)
+    {
+        string upgradeType = UpgradeTypes[_nextUpgradeTypeIndex % UpgradeTypes.Length];
+        _nextUpgradeTypeIndex += 1;
+        _waveTimeline.Add(new WaveSpawnEvent(time, WaveSpawnKind.UpgradeTarget, laneIndex, upgradeType));
+    }
+
+    private void RunWaveTimeline()
+    {
+        while (_nextWaveEventIndex < _waveTimeline.Count && _waveTimeline[_nextWaveEventIndex].Time <= _battleTime)
+        {
+            WaveSpawnEvent spawnEvent = _waveTimeline[_nextWaveEventIndex];
+            if (spawnEvent.Kind == WaveSpawnKind.Enemy)
+            {
+                SpawnEnemy(spawnEvent.LaneIndex);
+            }
+            else
+            {
+                SpawnUpgradeTarget(spawnEvent.LaneIndex, spawnEvent.UpgradeType);
+            }
+
+            _nextWaveEventIndex += 1;
+        }
+
+        if (!_waveCompleted && _battleTime >= WaveDuration)
+        {
+            _waveCompleted = true;
+        }
     }
 }
