@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Endless-Train2.0"
 run/main_scene="res://scenes/Main.tscn"
-config/features=PackedStringArray("4.7", "Forward Plus")
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
@@ -26,7 +26,6 @@ window/size/viewport_height=960
 window/size/window_width_override=810
 window/size/window_height_override=1440
 window/stretch/mode="canvas_items"
-window/stretch/aspect="keep"
 
 [dotnet]
 

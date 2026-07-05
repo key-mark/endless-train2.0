@@ -8,6 +8,7 @@ public partial class BattleScreen : Control
     private const string BulletScenePath = "res://scenes/objects/Bullet.tscn";
     private const string EnemyScenePath = "res://scenes/objects/Enemy.tscn";
     private const string PickupsScenePath = "res://scenes/objects/Pickups.tscn";
+    private const string BossScenePath = "res://scenes/objects/Boss.tscn";
 
     private LevelConfig _level = null!;
     private Control _battleArea = null!;
@@ -18,6 +19,7 @@ public partial class BattleScreen : Control
     private PackedScene _bulletScene = null!;
     private PackedScene _enemyScene = null!;
     private PackedScene _pickupsScene = null!;
+    private PackedScene _bossScene = null!;
     private Label _weaponStatsLabel = null!;
     private Label _combatStatusLabel = null!;
     private Label _temporaryBuffLabel = null!;
@@ -25,12 +27,8 @@ public partial class BattleScreen : Control
     private bool _isDragging;
     private float _shootTimer;
     private float _battleTime;
-    private float _bossAttackTimer;
-    private float _bossWarningTimer;
     private int _killCount;
     private int _nextWaveEventIndex;
-    private int _nextBossLaneIndex;
-    private int _pendingBossLaneIndex = -1;
     private int _temporaryAttackAdd;
     private int _temporaryBulletAdd;
     private int _bonusScrapReward;
@@ -43,6 +41,7 @@ public partial class BattleScreen : Control
     private bool _bossSpawned;
     private bool _battleEnded;
     private bool _battleWon;
+    private bool _bossDefeatHandled;
     private bool _rewardApplied;
     private int _scrapReward;
     private int _fuelReward;
@@ -56,6 +55,7 @@ public partial class BattleScreen : Control
     private float _trainHitFeedbackTimer;
     private readonly List<WaveSpawnEvent> _waveTimeline = new();
     private readonly List<TimedFeedback> _feedbacks = new();
+    private readonly Dictionary<string, TrackLine> _trackLines = new();
 
     private enum WaveSpawnKind
     {
@@ -74,20 +74,24 @@ public partial class BattleScreen : Control
 
     private sealed class WaveSpawnEvent
     {
-        public WaveSpawnEvent(float time, WaveSpawnKind kind, int laneIndex, string enemyType, string pickupType)
+        public WaveSpawnEvent(float time, WaveSpawnKind kind, int laneIndex, string trackId, string enemyType, string pickupType, int count)
         {
             Time = time;
             Kind = kind;
             LaneIndex = laneIndex;
+            TrackId = trackId;
             EnemyType = enemyType;
             PickupType = pickupType;
+            Count = count;
         }
 
         public float Time { get; }
         public WaveSpawnKind Kind { get; }
         public int LaneIndex { get; }
+        public string TrackId { get; }
         public string EnemyType { get; }
         public string PickupType { get; }
+        public int Count { get; }
     }
 
     private sealed class TimedFeedback
@@ -100,6 +104,40 @@ public partial class BattleScreen : Control
         public Vector2 StartScale { get; init; } = Vector2.One;
         public Vector2 EndScale { get; init; } = Vector2.One;
         public Color StartModulate { get; init; } = Colors.White;
+    }
+
+    private sealed class TrackLine
+    {
+        public TrackLine(Vector2 visualStart, Vector2 visualEnd)
+        {
+            VisualStart = visualStart;
+            VisualEnd = visualEnd;
+        }
+
+        public Vector2 VisualStart { get; }
+        public Vector2 VisualEnd { get; }
+        public Vector2 Direction
+        {
+            get
+            {
+                Vector2 direction = VisualEnd - VisualStart;
+                return direction.LengthSquared() > 0.01f ? direction.Normalized() : Vector2.Down;
+            }
+        }
+
+        public Vector2 Normal => new(-Direction.Y, Direction.X);
+
+        public Vector2 PointAtY(float y)
+        {
+            float deltaY = VisualEnd.Y - VisualStart.Y;
+            if (Mathf.Abs(deltaY) <= 0.01f)
+            {
+                return new Vector2(VisualStart.X, y);
+            }
+
+            float ratio = (y - VisualStart.Y) / deltaY;
+            return VisualStart.Lerp(VisualEnd, ratio);
+        }
     }
 
     public override void _Ready()
@@ -116,6 +154,7 @@ public partial class BattleScreen : Control
         _trainBaseStartColor = _trainBase.Color;
 
         LoadObjectPrefabs();
+        BuildSceneTrackLines();
         SpawnPlayerPrefabs();
         ClearTemporaryBuffs();
         BuildWaveTimeline();
@@ -146,13 +185,10 @@ public partial class BattleScreen : Control
         {
             RunWaveTimeline();
         }
-        else if (_phase == BattlePhase.Boss)
-        {
-            RunBossAttack((float)delta);
-        }
 
         CheckEnemyLineDamage();
         RemoveMissedPickups();
+        CheckBossDefeatedFallback();
         CheckFailure();
         ProcessFeedbacks((float)delta);
         ProcessTrainHitFeedback((float)delta);
@@ -210,12 +246,83 @@ public partial class BattleScreen : Control
         _bulletScene = GD.Load<PackedScene>(BulletScenePath);
         _enemyScene = GD.Load<PackedScene>(EnemyScenePath);
         _pickupsScene = GD.Load<PackedScene>(PickupsScenePath);
+        _bossScene = GD.Load<PackedScene>(BossScenePath);
+    }
+
+    private static T InstantiateTypedOrFallback<T>(PackedScene scene, string scenePath) where T : Node, new()
+    {
+        Node node = scene.Instantiate();
+        if (node is T typedNode)
+        {
+            return typedNode;
+        }
+
+        GD.PushWarning($"{scenePath} root script is not loaded as {typeof(T).Name}. Using fallback instance.");
+        node.QueueFree();
+        return new T();
     }
 
     private void SpawnPlayerPrefabs()
     {
         _playerRig.AddChild(_heroScene.Instantiate<Control>());
         _playerRig.AddChild(_turretScene.Instantiate<Control>());
+    }
+
+    private void BuildSceneTrackLines()
+    {
+        _trackLines.Clear();
+        RegisterTrackLine("left", "LeftTrack", 0);
+        RegisterTrackLine("lefttrack", "LeftTrack", 0);
+        RegisterTrackLine("right", "RightTrack", 1);
+        RegisterTrackLine("righttrack", "RightTrack", 1);
+    }
+
+    private void RegisterTrackLine(string trackId, string nodeName, int fallbackLaneIndex)
+    {
+        TrackLine line = TryCreateTrackLineFromNode(nodeName) ?? CreateVerticalFallbackTrackLine(fallbackLaneIndex);
+        _trackLines[NormalizeTrackId(trackId)] = line;
+    }
+
+    private TrackLine TryCreateTrackLineFromNode(string nodeName)
+    {
+        Control track = _battleArea.GetNodeOrNull<Control>(nodeName);
+        if (track == null)
+        {
+            return null;
+        }
+
+        Transform2D toBattleArea = _battleArea.GetGlobalTransform().AffineInverse() * track.GetGlobalTransform();
+        Vector2 centerTop = toBattleArea * new Vector2(track.Size.X * 0.5f, 0.0f);
+        Vector2 centerBottom = toBattleArea * new Vector2(track.Size.X * 0.5f, track.Size.Y);
+        return new TrackLine(centerTop, centerBottom);
+    }
+
+    private TrackLine CreateVerticalFallbackTrackLine(int laneIndex)
+    {
+        float laneX = _level.GetLaneX(laneIndex);
+        return new TrackLine(new Vector2(laneX, 0.0f), new Vector2(laneX, _level.TrainLineY));
+    }
+
+    private TrackLine GetTrackLine(string trackId, int laneIndex)
+    {
+        string normalized = NormalizeTrackId(trackId);
+        if (!string.IsNullOrWhiteSpace(normalized) && _trackLines.TryGetValue(normalized, out TrackLine line))
+        {
+            return line;
+        }
+
+        string fallback = laneIndex % 2 == 0 ? "lefttrack" : "righttrack";
+        if (_trackLines.TryGetValue(fallback, out TrackLine fallbackLine))
+        {
+            return fallbackLine;
+        }
+
+        return CreateVerticalFallbackTrackLine(laneIndex);
+    }
+
+    private static string NormalizeTrackId(string trackId)
+    {
+        return trackId.Trim().Replace("_", "").Replace("-", "").ToLowerInvariant();
     }
 
     private int GetHeroDamage()
@@ -298,32 +405,31 @@ public partial class BattleScreen : Control
     private void FireVolley()
     {
         float playerX = _playerRig.Position.X;
-        SpawnBullet(new Vector2(playerX - 11.0f, _level.Objects.HeroMuzzleY), GetHeroDamage());
+        SpawnBullet(new Vector2(playerX + _level.Objects.HeroMuzzleOffsetX, _level.Objects.HeroMuzzleY), GetHeroDamage());
 
         int turretShotCount = Mathf.Max(1, _level.Player.BulletCount + _temporaryBulletAdd);
         for (int i = 0; i < turretShotCount; i += 1)
         {
-            float offset = GetTurretShotOffset(i, turretShotCount);
-            SpawnBullet(new Vector2(playerX + offset, _level.Objects.TurretMuzzleY + (i % 2 == 0 ? 0.0f : 4.0f)), GetTurretDamage());
+            float offset = GetTurretShotOffset(i, turretShotCount, _level.Objects.TurretMuzzleOffsetX, _level.Objects.TurretBulletSpacing);
+            SpawnBullet(new Vector2(playerX + offset, _level.Objects.TurretMuzzleY), GetTurretDamage());
         }
     }
 
-    private static float GetTurretShotOffset(int index, int count)
+    private static float GetTurretShotOffset(int index, int count, float centerOffset, float spacing)
     {
         if (count <= 1)
         {
-            return -5.0f;
+            return centerOffset;
         }
 
-        return -5.0f + (index - (count - 1) * 0.5f) * 18.0f;
+        return centerOffset + (index - (count - 1) * 0.5f) * spacing;
     }
 
     private void SpawnBullet(Vector2 position, int damage)
     {
-        Bullet bullet = _bulletScene.Instantiate<Bullet>();
+        Bullet bullet = InstantiateTypedOrFallback<Bullet>(_bulletScene, BulletScenePath);
         bullet.Position = position;
         bullet.Size = new Vector2(_level.Objects.BulletWidth, _level.Objects.BulletHeight);
-        bullet.Color = new Color(1.0f, 0.94f, 0.35f, 1.0f);
         bullet.Speed = _level.Objects.BulletSpeed;
         bullet.Damage = damage;
         bullet.ExplosionRadius = _temporaryExplosiveRadius;
@@ -331,38 +437,64 @@ public partial class BattleScreen : Control
         _battleArea.AddChild(bullet);
     }
 
-    private void SpawnEnemy(int laneIndex, string enemyTypeId)
+    private void SpawnEnemy(int laneIndex, string trackId, string enemyTypeId, int countOverride)
     {
-        float laneX = GetLaneX(laneIndex);
         LevelConfig.EnemyTypeConfig enemyConfig = _level.GetEnemyType(enemyTypeId);
+        TrackLine trackLine = GetTrackLine(trackId, laneIndex);
+        int spawnCount = Mathf.Max(1, countOverride > 0 ? countOverride : enemyConfig.SpawnCount);
 
-        Enemy enemy = _enemyScene.Instantiate<Enemy>();
-        enemy.Position = new Vector2(laneX - _level.Objects.EnemySize * 0.5f, _level.Objects.EnemySpawnY);
+        for (int i = 0; i < spawnCount; i += 1)
+        {
+            Vector2 offset = GetEnemyGroupOffset(trackLine, i, enemyConfig.GroupSpacing, enemyConfig.GroupSpread);
+            Vector2 centerStart = trackLine.VisualStart + offset;
+            Vector2 centerEnd = trackLine.VisualEnd + offset;
+
+            SpawnEnemyInstance(enemyConfig, centerStart, centerEnd);
+        }
+    }
+
+    private void SpawnEnemyInstance(LevelConfig.EnemyTypeConfig enemyConfig, Vector2 centerStart, Vector2 centerEnd)
+    {
+        Enemy enemy = InstantiateTypedOrFallback<Enemy>(_enemyScene, EnemyScenePath);
         enemy.Size = new Vector2(_level.Objects.EnemySize, _level.Objects.EnemySize);
-        enemy.Color = enemyConfig.Color;
+        enemy.Color = string.IsNullOrWhiteSpace(enemyConfig.TexturePath)
+            ? enemyConfig.Color
+            : new Color(1.0f, 1.0f, 1.0f, 0.0f);
+        enemy.TexturePath = enemyConfig.TexturePath;
         enemy.MaxHp = enemyConfig.Hp;
         enemy.Speed = enemyConfig.Speed;
         enemy.HeroLineDamage = enemyConfig.Damage;
         enemy.TrainLineDamage = enemyConfig.TrainDamage;
         enemy.ScrapReward = enemyConfig.Reward;
+        enemy.SetTrackLine(centerStart, centerEnd);
         enemy.Died += position => OnEnemyDied(position, enemy.ScrapReward);
 
         _battleArea.AddChild(enemy);
     }
 
-    private void SpawnPickup(int laneIndex, string pickupId)
+    private static Vector2 GetEnemyGroupOffset(TrackLine trackLine, int index, float spacing, float spread)
     {
-        float laneX = GetLaneX(laneIndex);
-        LevelConfig.PickupConfig pickupConfig = _level.GetPickup(pickupId);
+        int sideBand = index % 3 - 1;
+        float alongOffset = index * spacing;
+        float sideOffset = sideBand * spread;
+        return trackLine.Direction * alongOffset + trackLine.Normal * sideOffset;
+    }
 
-        Pickup pickup = _pickupsScene.Instantiate<Pickup>();
-        pickup.Position = new Vector2(laneX - _level.Objects.PickupSize * 0.5f, _level.Objects.PickupSpawnY);
+    private void SpawnPickup(string pickupId)
+    {
+        LevelConfig.PickupConfig pickupConfig = _level.GetPickup(pickupId);
+        Vector2 centerStart = new(_level.Objects.PickupSpawnX, _level.Objects.PickupSpawnY);
+        Vector2 centerEnd = new(_level.Objects.PickupSpawnX, _level.TrainLineY);
+
+        Pickup pickup = InstantiateTypedOrFallback<Pickup>(_pickupsScene, PickupsScenePath);
         pickup.Size = new Vector2(_level.Objects.PickupSize, _level.Objects.PickupSize);
         pickup.Color = pickupConfig.Color;
         pickup.MaxHp = pickupConfig.Hp;
         pickup.Speed = pickupConfig.Speed;
         pickup.UpgradeType = pickupId;
+        pickup.PickupKind = pickupConfig.Kind;
         pickup.DisplayName = pickupConfig.Name;
+        pickup.SetTrackLine(centerStart, centerEnd);
         pickup.Destroyed += OnPickupDestroyed;
 
         _battleArea.AddChild(pickup);
@@ -496,7 +628,8 @@ public partial class BattleScreen : Control
         foreach (LevelConfig.TimelineEventConfig item in _level.Timeline)
         {
             WaveSpawnKind kind = item.Type == "pickup" ? WaveSpawnKind.Pickup : WaveSpawnKind.Enemy;
-            _waveTimeline.Add(new WaveSpawnEvent(item.Time, kind, item.Lane, item.Enemy, item.Pickup));
+            int laneIndex = _level.ResolveLaneIndex(item.Track, item.Lane);
+            _waveTimeline.Add(new WaveSpawnEvent(item.Time, kind, laneIndex, item.Track, item.Enemy, item.Pickup, item.Count));
         }
 
         _waveTimeline.Sort((left, right) => left.Time.CompareTo(right.Time));
@@ -509,11 +642,11 @@ public partial class BattleScreen : Control
             WaveSpawnEvent spawnEvent = _waveTimeline[_nextWaveEventIndex];
             if (spawnEvent.Kind == WaveSpawnKind.Enemy)
             {
-                SpawnEnemy(spawnEvent.LaneIndex, spawnEvent.EnemyType);
+                SpawnEnemy(spawnEvent.LaneIndex, spawnEvent.TrackId, spawnEvent.EnemyType, spawnEvent.Count);
             }
             else
             {
-                SpawnPickup(spawnEvent.LaneIndex, spawnEvent.PickupType);
+                SpawnPickup(spawnEvent.PickupType);
             }
 
             _nextWaveEventIndex += 1;
@@ -537,7 +670,6 @@ public partial class BattleScreen : Control
         SpawnBoss();
         _phase = BattlePhase.Boss;
         _bossSpawned = true;
-        _bossAttackTimer = _level.Boss.InitialAttackDelay;
         ShowBanner("BOSS INCOMING", new Color(1.0f, 0.56f, 0.26f, 1.0f));
         RefreshWaveStatus();
     }
@@ -555,46 +687,24 @@ public partial class BattleScreen : Control
 
     private void SpawnBoss()
     {
-        _boss = new Boss
-        {
-            Position = new Vector2(_level.Boss.SpawnX, _level.Boss.SpawnY),
-            Size = new Vector2(_level.Boss.Width, _level.Boss.Height),
-            Color = new Color(0.42f, 0.28f, 0.2f, 1.0f),
-            MaxHp = _level.Boss.MaxHp,
-            DisplayName = _level.Boss.Name
-        };
+        _boss = InstantiateTypedOrFallback<Boss>(_bossScene, BossScenePath);
+        _boss.Position = new Vector2(_level.Boss.SpawnX, _level.Boss.SpawnY);
+        _boss.Size = new Vector2(_level.Boss.Width, _level.Boss.Height);
+        _boss.Color = new Color(0.42f, 0.28f, 0.2f, 1.0f);
+        _boss.MaxHp = _level.Boss.MaxHp;
+        _boss.DisplayName = _level.Boss.Name;
+        _boss.ConfigureAttack(_level.Boss.AttackInterval, _level.Boss.InitialAttackDelay, _level.Boss.WarningDelay, _level.Boss.AttackDamage);
+        _boss.DefeatedReached += OnBossDefeated;
         _boss.Defeated += OnBossDefeated;
         _boss.PhaseChanged += OnBossPhaseChanged;
+        _boss.LaneWarningStarted += OnBossLaneWarningStarted;
+        _boss.LaneAttackResolved += OnBossLaneAttackResolved;
         _battleArea.AddChild(_boss);
+        _boss.SetAttacksEnabled(true);
     }
 
-    private void RunBossAttack(float delta)
+    private void OnBossLaneWarningStarted(int laneIndex)
     {
-        if (_pendingBossLaneIndex >= 0)
-        {
-            _bossWarningTimer -= delta;
-            if (_bossWarningTimer <= 0.0f)
-            {
-                ResolveBossLaneAttack();
-            }
-
-            return;
-        }
-
-        _bossAttackTimer -= delta;
-        if (_bossAttackTimer <= 0.0f)
-        {
-            StartBossLaneWarning(_nextBossLaneIndex);
-            _nextBossLaneIndex += 1;
-            _bossAttackTimer = _level.Boss.AttackInterval;
-        }
-    }
-
-    private void StartBossLaneWarning(int laneIndex)
-    {
-        _pendingBossLaneIndex = laneIndex;
-        _bossWarningTimer = _level.Boss.WarningDelay;
-
         float laneX = GetLaneX(laneIndex);
         _bossWarningRect?.QueueFree();
         _bossWarningRect = new ColorRect
@@ -607,25 +717,42 @@ public partial class BattleScreen : Control
         _battleArea.AddChild(_bossWarningRect);
     }
 
-    private void ResolveBossLaneAttack()
+    private void OnBossLaneAttackResolved(int laneIndex, int damage)
     {
-        float dangerX = GetLaneX(_pendingBossLaneIndex);
+        float dangerX = GetLaneX(laneIndex);
         _bossWarningRect?.QueueFree();
         _bossWarningRect = null;
 
         if (Mathf.Abs(_playerRig.Position.X - dangerX) <= _level.Boss.DangerRadius)
         {
-            DamageTrainWithFeedback(_level.Boss.AttackDamage, new Vector2(dangerX - 58.0f, 704.0f), "Boss Strike");
+            DamageTrainWithFeedback(damage, new Vector2(dangerX - 58.0f, 704.0f), "Boss Strike");
             CheckFailure();
         }
-
-        _pendingBossLaneIndex = -1;
     }
 
     private void OnBossDefeated()
     {
+        if (_bossDefeatHandled || _battleEnded)
+        {
+            return;
+        }
+
+        _bossDefeatHandled = true;
         ShowBanner("BOSS DEFEATED", new Color(0.62f, 1.0f, 0.7f, 1.0f));
         ShowResultPanel(true);
+    }
+
+    private void CheckBossDefeatedFallback()
+    {
+        if (_bossDefeatHandled || _battleEnded || _phase != BattlePhase.Boss || _boss == null)
+        {
+            return;
+        }
+
+        if (GodotObject.IsInstanceValid(_boss) && _boss.Hp <= 0)
+        {
+            OnBossDefeated();
+        }
     }
 
     private void OnBossPhaseChanged(int phase)
@@ -662,6 +789,7 @@ public partial class BattleScreen : Control
 
         _resultPanel = new ColorRect
         {
+            ZIndex = 50,
             Position = new Vector2(70.0f, 320.0f),
             Size = new Vector2(400.0f, 330.0f),
             Color = victory

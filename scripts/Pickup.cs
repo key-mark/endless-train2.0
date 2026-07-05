@@ -8,6 +8,7 @@ public partial class Pickup : ColorRect
     [Export] public float Speed { get; set; } = 82.0f;
     [Export] public int MaxHp { get; set; } = 25;
     [Export] public string UpgradeType { get; set; } = "attack_add";
+    [Export] public string PickupKind { get; set; } = "attack_add";
     [Export] public string DisplayName { get; set; } = "";
 
     public int Hp { get; private set; }
@@ -15,12 +16,17 @@ public partial class Pickup : ColorRect
     private Label _typeLabel = null!;
     private Label _hpLabel = null!;
     private ColorRect _hpBar = null!;
+    private TextureRect _sprite = null!;
     private Color _baseColor;
+    private Color _baseSpriteModulate = Colors.White;
     private float _hitFlashTimer;
+    private bool _usesTexture;
+    private Vector2 _moveDirection = Vector2.Down;
 
     public override void _Ready()
     {
         Hp = MaxHp;
+        SetupTextureVisual();
         _baseColor = Color;
 
         _typeLabel = new Label
@@ -68,18 +74,18 @@ public partial class Pickup : ColorRect
 
     public override void _Process(double delta)
     {
-        Position += Vector2.Down * Speed * (float)delta;
+        Position += _moveDirection * Speed * (float)delta;
 
         if (_hitFlashTimer > 0.0f)
         {
             _hitFlashTimer -= (float)delta;
             float ratio = Mathf.Clamp(_hitFlashTimer / 0.12f, 0.0f, 1.0f);
-            Color = _baseColor.Lerp(new Color(1.0f, 1.0f, 1.0f, 1.0f), ratio);
+            ApplyHitVisual(ratio);
             Scale = new Vector2(1.0f + ratio * 0.08f, 1.0f + ratio * 0.08f);
         }
         else
         {
-            Color = _baseColor;
+            ResetHitVisual();
             Scale = Vector2.One;
         }
     }
@@ -123,5 +129,73 @@ public partial class Pickup : ColorRect
             "bullet_add" => "+SHOT",
             _ => "UP"
         };
+    }
+
+    public void SetTrackLine(Vector2 centerStart, Vector2 centerEnd)
+    {
+        Position = centerStart - Size * 0.5f;
+        Vector2 direction = centerEnd - centerStart;
+        _moveDirection = direction.LengthSquared() > 0.01f ? direction.Normalized() : Vector2.Down;
+    }
+
+    private void SetupTextureVisual()
+    {
+        string texturePath = GetTexturePath();
+        Texture2D texture = GD.Load<Texture2D>(texturePath);
+        if (texture == null)
+        {
+            GD.PushWarning($"Pickup texture not found: {texturePath}");
+            return;
+        }
+
+        _sprite = new TextureRect
+        {
+            Position = Vector2.Zero,
+            Size = Size,
+            Texture = texture,
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        AddChild(_sprite);
+        _baseSpriteModulate = _sprite.Modulate;
+        _usesTexture = true;
+        Color = new Color(1.0f, 1.0f, 1.0f, 0.0f);
+    }
+
+    private string GetTexturePath()
+    {
+        string kind = string.IsNullOrWhiteSpace(PickupKind) ? UpgradeType : PickupKind;
+        return $"res://resource/figure/pickups/{NormalizeTextureKey(kind)}.png";
+    }
+
+    private static string NormalizeTextureKey(string value)
+    {
+        return value.Trim().Replace("/", "").Replace("\\", "").Replace("..", "");
+    }
+
+    private void ApplyHitVisual(float ratio)
+    {
+        Color flash = new(1.0f, 0.94f, 0.78f, 1.0f);
+        if (_usesTexture)
+        {
+            _sprite.Modulate = _baseSpriteModulate.Lerp(flash, ratio);
+        }
+        else
+        {
+            Color = _baseColor.Lerp(flash, ratio);
+        }
+    }
+
+    private void ResetHitVisual()
+    {
+        if (_usesTexture)
+        {
+            _sprite.Modulate = _baseSpriteModulate;
+        }
+        else
+        {
+            Color = _baseColor;
+        }
     }
 }

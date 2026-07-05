@@ -19,6 +19,7 @@ public sealed class LevelConfig
     public float PlayerMaxX { get; private set; } = 488.0f;
     public float PlayerStartX { get; private set; } = 270.0f;
     public float HeroBlockRadius { get; private set; } = 54.0f;
+    public Dictionary<string, int> TrackLaneIndexes { get; } = new(StringComparer.OrdinalIgnoreCase);
     public PlayerConfig Player { get; } = new();
     public ObjectConfig Objects { get; } = new();
     public RewardConfig Rewards { get; } = new();
@@ -47,6 +48,17 @@ public sealed class LevelConfig
         }
 
         return Lanes[index];
+    }
+
+    public int ResolveLaneIndex(string trackId, int fallbackLane)
+    {
+        string normalized = NormalizeTrackId(trackId);
+        if (!string.IsNullOrWhiteSpace(normalized) && TrackLaneIndexes.TryGetValue(normalized, out int laneIndex))
+        {
+            return laneIndex;
+        }
+
+        return fallbackLane;
     }
 
     public EnemyTypeConfig GetEnemyType(string enemyId)
@@ -160,6 +172,8 @@ public sealed class LevelConfig
         config.PlayerStartX = ReadFloat(root, "player_start_x", config.PlayerStartX);
         config.HeroBlockRadius = ReadFloat(root, "hero_block_radius", config.HeroBlockRadius);
 
+        config.ResetDefaultTrackAliases();
+
         if (TryGet(root, "lanes", out JsonElement lanes) && lanes.ValueKind == JsonValueKind.Array)
         {
             config.Lanes.Clear();
@@ -168,6 +182,24 @@ public sealed class LevelConfig
                 if (lane.TryGetSingle(out float laneX))
                 {
                     config.Lanes.Add(laneX);
+                }
+            }
+
+            config.ResetDefaultTrackAliases();
+        }
+
+        if (TryGet(root, "tracks", out JsonElement tracks) && tracks.ValueKind == JsonValueKind.Object)
+        {
+            config.Lanes.Clear();
+            config.TrackLaneIndexes.Clear();
+            int trackIndex = 0;
+            foreach (JsonProperty track in tracks.EnumerateObject())
+            {
+                if (track.Value.TryGetSingle(out float trackX))
+                {
+                    config.Lanes.Add(trackX);
+                    config.RegisterTrackAlias(track.Name, trackIndex);
+                    trackIndex += 1;
                 }
             }
         }
@@ -229,6 +261,7 @@ public sealed class LevelConfig
 
     private static void AddDefaultEntries(LevelConfig config)
     {
+        config.ResetDefaultTrackAliases();
         config.EnemyTypes["grunt"] = EnemyTypeConfig.CreateDefault("grunt");
         config.Pickups["attack_add"] = PickupConfig.CreateDefault("attack_add");
         config.Timeline.Add(new TimelineEventConfig
@@ -238,6 +271,31 @@ public sealed class LevelConfig
             Enemy = "grunt",
             Lane = 0
         });
+    }
+
+    private void ResetDefaultTrackAliases()
+    {
+        TrackLaneIndexes.Clear();
+        RegisterTrackAlias("left", 0);
+        RegisterTrackAlias("lefttrack", 0);
+        RegisterTrackAlias("left_track", 0);
+        RegisterTrackAlias("right", 1);
+        RegisterTrackAlias("righttrack", 1);
+        RegisterTrackAlias("right_track", 1);
+    }
+
+    private void RegisterTrackAlias(string trackId, int laneIndex)
+    {
+        string normalized = NormalizeTrackId(trackId);
+        if (!string.IsNullOrWhiteSpace(normalized))
+        {
+            TrackLaneIndexes[normalized] = laneIndex;
+        }
+    }
+
+    private static string NormalizeTrackId(string trackId)
+    {
+        return trackId.Trim().Replace("_", "").Replace("-", "").ToLowerInvariant();
     }
 
     private static bool TryGet(JsonElement element, string name, out JsonElement value)
@@ -325,9 +383,13 @@ public sealed class LevelConfig
     public sealed class ObjectConfig
     {
         public float HeroMuzzleY { get; private set; } = 724.0f;
+        public float HeroMuzzleOffsetX { get; private set; } = -11.0f;
         public float TurretMuzzleY { get; private set; } = 758.0f;
+        public float TurretMuzzleOffsetX { get; private set; } = -5.0f;
+        public float TurretBulletSpacing { get; private set; } = 18.0f;
         public float EnemySpawnY { get; private set; } = -56.0f;
         public float EnemySize { get; private set; } = 44.0f;
+        public float PickupSpawnX { get; private set; } = 270.0f;
         public float PickupSpawnY { get; private set; } = -64.0f;
         public float PickupSize { get; private set; } = 50.0f;
         public float PickupMissY { get; private set; } = 870.0f;
@@ -338,9 +400,13 @@ public sealed class LevelConfig
         public void Read(JsonElement element)
         {
             HeroMuzzleY = ReadFloat(element, "hero_muzzle_y", HeroMuzzleY);
+            HeroMuzzleOffsetX = ReadFloat(element, "hero_muzzle_offset_x", HeroMuzzleOffsetX);
             TurretMuzzleY = ReadFloat(element, "turret_muzzle_y", TurretMuzzleY);
+            TurretMuzzleOffsetX = ReadFloat(element, "turret_muzzle_offset_x", TurretMuzzleOffsetX);
+            TurretBulletSpacing = ReadFloat(element, "turret_bullet_spacing", TurretBulletSpacing);
             EnemySpawnY = ReadFloat(element, "enemy_spawn_y", EnemySpawnY);
             EnemySize = ReadFloat(element, "enemy_size", EnemySize);
+            PickupSpawnX = ReadFloat(element, "pickup_spawn_x", PickupSpawnX);
             PickupSpawnY = ReadFloat(element, "pickup_spawn_y", PickupSpawnY);
             PickupSize = ReadFloat(element, "pickup_size", PickupSize);
             PickupMissY = ReadFloat(element, "pickup_miss_y", PickupMissY);
@@ -377,6 +443,10 @@ public sealed class LevelConfig
         public int Damage { get; private set; } = 12;
         public int TrainDamage { get; private set; } = 6;
         public int Reward { get; private set; } = 2;
+        public int SpawnCount { get; private set; } = 1;
+        public float GroupSpacing { get; private set; } = 22.0f;
+        public float GroupSpread { get; private set; } = 14.0f;
+        public string TexturePath { get; private set; } = "";
         public Color Color { get; private set; } = new(0.84f, 0.29f, 0.24f, 1.0f);
 
         public static EnemyTypeConfig CreateDefault(string id)
@@ -392,6 +462,10 @@ public sealed class LevelConfig
             Damage = ReadInt(element, "damage", Damage);
             TrainDamage = ReadInt(element, "train_damage", TrainDamage);
             Reward = ReadInt(element, "reward", Reward);
+            SpawnCount = ReadInt(element, "spawn_count", SpawnCount);
+            GroupSpacing = ReadFloat(element, "group_spacing", GroupSpacing);
+            GroupSpread = ReadFloat(element, "group_spread", GroupSpread);
+            TexturePath = ReadString(element, "texture", ReadString(element, "image", TexturePath));
             Color = ReadColor(element, "color", Color);
         }
     }
@@ -426,9 +500,11 @@ public sealed class LevelConfig
     {
         public float Time { get; init; }
         public string Type { get; init; } = "enemy";
+        public string Track { get; init; } = "";
         public string Enemy { get; init; } = "grunt";
         public string Pickup { get; init; } = "attack_add";
         public int Lane { get; init; }
+        public int Count { get; init; }
 
         public static TimelineEventConfig FromJson(JsonElement element)
         {
@@ -436,9 +512,11 @@ public sealed class LevelConfig
             {
                 Time = ReadFloat(element, "time", 0.0f),
                 Type = ReadString(element, "type", "enemy"),
+                Track = ReadString(element, "track", ""),
                 Enemy = ReadString(element, "enemy", "grunt"),
                 Pickup = ReadString(element, "pickup", "attack_add"),
-                Lane = ReadInt(element, "lane", 0)
+                Lane = ReadInt(element, "lane", 0),
+                Count = ReadInt(element, "count", 0)
             };
         }
     }

@@ -1,10 +1,11 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://didolpydly74o"]
 
-[ext_resource type="Script" path="res://scripts/Pickup.cs" id="1_pickup_script"]
+[ext_resource type="Script" uid="uid://bx2xg7n7ec4k" path="res://scripts/Pickup.cs" id="1_pickup_script"]
 
-[node name="Pickups" type="ColorRect"]
+[node name="Pickups" type="ColorRect" unique_id=1489754094]
+z_index = 2
 offset_right = 50.0
 offset_bottom = 50.0
-color = Color(0.8, 0.8, 0.8, 1)
 mouse_filter = 2
+color = Color(0.8, 0.8, 0.8, 1)
 script = ExtResource("1_pickup_script")

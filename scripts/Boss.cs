@@ -1,4 +1,5 @@
 using Godot;
+using System;
 
 public partial class Boss : ColorRect
 {
@@ -8,18 +9,35 @@ public partial class Boss : ColorRect
     [Signal]
     public delegate void PhaseChangedEventHandler(int phase);
 
+    [Signal]
+    public delegate void LaneWarningStartedEventHandler(int laneIndex);
+
+    [Signal]
+    public delegate void LaneAttackResolvedEventHandler(int laneIndex, int damage);
+
     private const int SegmentCount = 3;
 
     [Export] public int MaxHp { get; set; } = 300;
     [Export] public string DisplayName { get; set; } = "Station Breaker";
 
+    public event Action DefeatedReached;
+
     public int Hp { get; private set; }
     public int CurrentPhase { get; private set; } = 1;
+    public bool IsDefeated { get; private set; }
 
     private Label _hpLabel = null!;
     private ColorRect[] _hpBars = null!;
     private Color _phaseColor;
     private float _hitFlashTimer;
+    private bool _attacksEnabled;
+    private float _attackInterval = 4.0f;
+    private float _attackTimer = 1.6f;
+    private float _warningDelay = 1.0f;
+    private float _warningTimer;
+    private int _attackDamage = 18;
+    private int _nextLaneIndex;
+    private int _pendingLaneIndex = -1;
 
     public override void _Ready()
     {
@@ -95,6 +113,8 @@ public partial class Boss : ColorRect
             Color = _phaseColor;
             Scale = Vector2.One;
         }
+
+        RunAttackTimer((float)delta);
     }
 
     public Rect2 GetHitRect()
@@ -104,6 +124,11 @@ public partial class Boss : ColorRect
 
     public void TakeDamage(int damage)
     {
+        if (IsDefeated)
+        {
+            return;
+        }
+
         Hp = Mathf.Max(0, Hp - damage);
         _hitFlashTimer = 0.14f;
         _hpLabel.Text = GetHpText();
@@ -112,9 +137,37 @@ public partial class Boss : ColorRect
 
         if (Hp <= 0)
         {
-            EmitSignal(SignalName.Defeated);
-            QueueFree();
+            Defeat();
         }
+    }
+
+    private void Defeat()
+    {
+        if (IsDefeated)
+        {
+            return;
+        }
+
+        IsDefeated = true;
+        _attacksEnabled = false;
+        EmitSignal(SignalName.Defeated);
+        DefeatedReached?.Invoke();
+        QueueFree();
+    }
+
+    public void ConfigureAttack(float attackInterval, float initialAttackDelay, float warningDelay, int attackDamage)
+    {
+        _attackInterval = Mathf.Max(0.1f, attackInterval);
+        _attackTimer = Mathf.Max(0.0f, initialAttackDelay);
+        _warningDelay = Mathf.Max(0.0f, warningDelay);
+        _attackDamage = Mathf.Max(0, attackDamage);
+        _pendingLaneIndex = -1;
+        _nextLaneIndex = 0;
+    }
+
+    public void SetAttacksEnabled(bool enabled)
+    {
+        _attacksEnabled = enabled;
     }
 
     private string GetHpText()
@@ -149,5 +202,35 @@ public partial class Boss : ColorRect
             _ => new Color(0.42f, 0.28f, 0.2f, 1.0f)
         };
         EmitSignal(SignalName.PhaseChanged, CurrentPhase);
+    }
+
+    private void RunAttackTimer(float delta)
+    {
+        if (!_attacksEnabled || Hp <= 0)
+        {
+            return;
+        }
+
+        if (_pendingLaneIndex >= 0)
+        {
+            _warningTimer -= delta;
+            if (_warningTimer <= 0.0f)
+            {
+                EmitSignal(SignalName.LaneAttackResolved, _pendingLaneIndex, _attackDamage);
+                _pendingLaneIndex = -1;
+                _attackTimer = _attackInterval;
+            }
+
+            return;
+        }
+
+        _attackTimer -= delta;
+        if (_attackTimer <= 0.0f)
+        {
+            _pendingLaneIndex = _nextLaneIndex;
+            _nextLaneIndex += 1;
+            _warningTimer = _warningDelay;
+            EmitSignal(SignalName.LaneWarningStarted, _pendingLaneIndex);
+        }
     }
 }

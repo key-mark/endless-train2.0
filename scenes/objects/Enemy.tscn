@@ -1,10 +1,17 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://cenontb2p7ndq"]
 
-[ext_resource type="Script" path="res://scripts/Enemy.cs" id="1_enemy_script"]
+[ext_resource type="Script" uid="uid://bqu8c5bc7wcyc" path="res://scripts/Enemy.cs" id="1_enemy_script"]
+[ext_resource type="Texture2D" uid="uid://c2c6jpr0rawf1" path="res://resource/figure/enemy/enemy.png" id="2_qpkod"]
 
-[node name="Enemy" type="ColorRect"]
-offset_right = 44.0
-offset_bottom = 44.0
-color = Color(0.85, 0.24, 0.2, 1)
+[node name="Enemy" type="ColorRect" unique_id=1997712595]
+z_index = 2
+offset_right = 40.0
+offset_bottom = 38.0
 mouse_filter = 2
+color = Color(0.8509804, 0.23921569, 0.2, 0)
 script = ExtResource("1_enemy_script")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=291486968]
+position = Vector2(19.984375, 21.13281)
+scale = Vector2(0.043087117, 0.044445276)
+texture = ExtResource("2_qpkod")

@@ -1,10 +1,18 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://ubkg4nunxrvt"]
 
-[ext_resource type="Script" path="res://scripts/Bullet.cs" id="1_bullet_script"]
+[ext_resource type="Script" uid="uid://bxm7unomxpba0" path="res://scripts/Bullet.cs" id="1_bullet_script"]
+[ext_resource type="Texture2D" uid="uid://ckudwpt2d7poc" path="res://resource/figure/bullet.png" id="2_d4b24"]
 
-[node name="Bullet" type="ColorRect"]
+[node name="Bullet" type="ColorRect" unique_id=1223297118]
+z_index = 2
 offset_right = 10.0
 offset_bottom = 20.0
-color = Color(1, 0.94, 0.35, 1)
 mouse_filter = 2
+color = Color(1, 0.9411765, 0.34901962, 0.011764706)
 script = ExtResource("1_bullet_script")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1718091172]
+position = Vector2(5.000001, 14.999999)
+rotation = -1.5707964
+scale = Vector2(0.02949117, 0.029538997)
+texture = ExtResource("2_d4b24")

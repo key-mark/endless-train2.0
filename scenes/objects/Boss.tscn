@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://cmg3nest50prg"]
+
+[ext_resource type="Script" uid="uid://bu06i7gyubfog" path="res://scripts/Boss.cs" id="1_boss_script"]
+[ext_resource type="Texture2D" uid="uid://dj8ji06g0hyh0" path="res://resource/figure/boss.png" id="2_ko25e"]
+
+[node name="Boss" type="ColorRect" unique_id=1332353372]
+z_index = 2
+offset_right = 282.0
+offset_bottom = 122.0
+mouse_filter = 2
+color = Color(1, 1, 1, 0)
+script = ExtResource("1_boss_script")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=537435290]
+position = Vector2(141.5, 61.75)
+scale = Vector2(0.4127219, 0.33197832)
+texture = ExtResource("2_ko25e")
