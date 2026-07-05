@@ -1,4 +1,6 @@
-[gd_scene format=3]
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/TrainScreen.cs" id="1_train_screen_script"]
 
 [node name="TrainScreen" type="Control"]
 layout_mode = 3
@@ -7,6 +9,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("1_train_screen_script")
 
 [node name="Background" type="ColorRect" parent="."]
 layout_mode = 0
@@ -29,7 +32,7 @@ layout_mode = 0
 offset_left = 32.0
 offset_top = 122.0
 offset_right = 508.0
-offset_bottom = 210.0
+offset_bottom = 232.0
 color = Color(0.16, 0.19, 0.24, 1)
 
 [node name="ResourceLabel" type="Label" parent="ResourcePlaceholder"]
@@ -37,16 +40,46 @@ layout_mode = 0
 offset_left = 16.0
 offset_top = 18.0
 offset_right = 460.0
-offset_bottom = 70.0
-theme_override_font_sizes/font_size = 22
+offset_bottom = 92.0
+theme_override_font_sizes/font_size = 21
 text = "Resources: Scrap / Fuel / Food / Parts"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="StatsPanel" type="ColorRect" parent="."]
+layout_mode = 0
+offset_left = 32.0
+offset_top = 248.0
+offset_right = 508.0
+offset_bottom = 356.0
+color = Color(0.13, 0.16, 0.2, 1)
+
+[node name="LevelsLabel" type="Label" parent="StatsPanel"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 460.0
+offset_bottom = 62.0
+theme_override_font_sizes/font_size = 20
+text = "Train Lv: 1   Cannon Lv: 1\nStation: 1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HpLabel" type="Label" parent="StatsPanel"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 66.0
+offset_right = 460.0
+offset_bottom = 100.0
+theme_override_font_sizes/font_size = 20
+text = "Train HP: 100 / 100"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="TrainPreviewPlaceholder" type="ColorRect" parent="."]
 layout_mode = 0
 offset_left = 32.0
-offset_top = 260.0
+offset_top = 382.0
 offset_right = 508.0
 offset_bottom = 680.0
 color = Color(0.12, 0.15, 0.18, 1)
@@ -64,10 +97,21 @@ horizontal_alignment = 1
 [node name="TrainBodyPlaceholder" type="ColorRect" parent="TrainPreviewPlaceholder"]
 layout_mode = 0
 offset_left = 58.0
-offset_top = 230.0
+offset_top = 168.0
 offset_right = 418.0
-offset_bottom = 310.0
+offset_bottom = 248.0
 color = Color(0.29, 0.34, 0.4, 1)
+
+[node name="MessageLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 64.0
+offset_top = 696.0
+offset_right = 476.0
+offset_bottom = 730.0
+theme_override_font_sizes/font_size = 18
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="CannonUpgradeButton" type="Button" parent="."]
 layout_mode = 0
