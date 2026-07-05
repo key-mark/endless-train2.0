@@ -11,7 +11,7 @@ public partial class Bullet : ColorRect
     {
         Position += Vector2.Up * Speed * (float)delta;
 
-        TryHitEnemy();
+        TryHitTarget();
 
         if (Position.Y < TopDestroyY)
         {
@@ -19,7 +19,7 @@ public partial class Bullet : ColorRect
         }
     }
 
-    private void TryHitEnemy()
+    private void TryHitTarget()
     {
         if (GetParent() is not Node parent)
         {
@@ -29,19 +29,19 @@ public partial class Bullet : ColorRect
         Rect2 bulletRect = new Rect2(Position, Size);
         foreach (Node child in parent.GetChildren())
         {
-            if (child is not Enemy enemy || enemy.IsQueuedForDeletion())
+            if (child is Enemy enemy && !enemy.IsQueuedForDeletion() && bulletRect.Intersects(enemy.GetHitRect()))
             {
-                continue;
+                enemy.TakeDamage(Damage);
+                QueueFree();
+                return;
             }
 
-            if (!bulletRect.Intersects(enemy.GetHitRect()))
+            if (child is UpgradeTarget target && !target.IsQueuedForDeletion() && bulletRect.Intersects(target.GetHitRect()))
             {
-                continue;
+                target.TakeDamage(Damage);
+                QueueFree();
+                return;
             }
-
-            enemy.TakeDamage(Damage);
-            QueueFree();
-            return;
         }
     }
 }

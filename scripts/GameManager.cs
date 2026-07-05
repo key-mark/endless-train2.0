@@ -32,6 +32,11 @@ public partial class GameManager : Node
         TrainCurrentHp = Mathf.Max(0, TrainCurrentHp - damage);
     }
 
+    public void HealTrain(int amount)
+    {
+        TrainCurrentHp = Mathf.Min(TrainMaxHp, TrainCurrentHp + amount);
+    }
+
     public bool TryUpgradeCannon()
     {
         int cost = GetCannonUpgradeCost();
