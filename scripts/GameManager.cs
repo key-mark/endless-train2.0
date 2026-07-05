@@ -22,6 +22,11 @@ public partial class GameManager : Node
         return 10 + (CannonLevel - 1) * 5;
     }
 
+    public int GetCannonDamageBonus()
+    {
+        return (CannonLevel - 1) * 5;
+    }
+
     public float GetCannonFireInterval()
     {
         return Mathf.Max(0.18f, 0.75f - (CannonLevel - 1) * 0.08f);

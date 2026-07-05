@@ -23,6 +23,8 @@ GameManager="*res://scripts/GameManager.cs"
 
 window/size/viewport_width=540
 window/size/viewport_height=960
+window/size/window_width_override=810
+window/size/window_height_override=1440
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
 

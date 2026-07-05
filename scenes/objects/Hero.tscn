@@ -1,0 +1,26 @@
+[gd_scene format=3]
+
+[node name="Hero" type="Control"]
+offset_left = -18.0
+offset_top = 724.0
+offset_right = 18.0
+offset_bottom = 784.0
+mouse_filter = 2
+
+[node name="Visual" type="ColorRect" parent="."]
+layout_mode = 0
+offset_right = 36.0
+offset_bottom = 60.0
+color = Color(0.29, 0.67, 0.9, 1)
+mouse_filter = 2
+
+[node name="Label" type="Label" parent="."]
+layout_mode = 0
+offset_left = -24.0
+offset_top = 62.0
+offset_right = 60.0
+offset_bottom = 88.0
+theme_override_font_sizes/font_size = 16
+text = "Hero"
+horizontal_alignment = 1
+mouse_filter = 2

@@ -1,0 +1,9 @@
+{
+  "default_level": "demo_001",
+  "levels": [
+    {
+      "id": "demo_001",
+      "path": "res://data/levels/demo_001.json"
+    }
+  ]
+}

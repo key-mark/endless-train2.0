@@ -1,6 +1,6 @@
 using Godot;
 
-public partial class UpgradeTarget : ColorRect
+public partial class Pickup : ColorRect
 {
     [Signal]
     public delegate void DestroyedEventHandler(string upgradeType, Vector2 position);
@@ -8,6 +8,7 @@ public partial class UpgradeTarget : ColorRect
     [Export] public float Speed { get; set; } = 82.0f;
     [Export] public int MaxHp { get; set; } = 25;
     [Export] public string UpgradeType { get; set; } = "attack_add";
+    [Export] public string DisplayName { get; set; } = "";
 
     public int Hp { get; private set; }
 
@@ -109,6 +110,11 @@ public partial class UpgradeTarget : ColorRect
 
     private string GetShortName()
     {
+        if (!string.IsNullOrWhiteSpace(DisplayName))
+        {
+            return DisplayName;
+        }
+
         return UpgradeType switch
         {
             "attack_add" => "ATK",

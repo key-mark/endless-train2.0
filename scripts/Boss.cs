@@ -11,6 +11,7 @@ public partial class Boss : ColorRect
     private const int SegmentCount = 3;
 
     [Export] public int MaxHp { get; set; } = 300;
+    [Export] public string DisplayName { get; set; } = "Station Breaker";
 
     public int Hp { get; private set; }
     public int CurrentPhase { get; private set; } = 1;
@@ -29,7 +30,7 @@ public partial class Boss : ColorRect
         {
             Position = new Vector2(0.0f, 10.0f),
             Size = new Vector2(Size.X, 26.0f),
-            Text = "Station Breaker",
+            Text = DisplayName,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore

@@ -3,47 +3,21 @@ using System.Collections.Generic;
 
 public partial class BattleScreen : Control
 {
-    private const float BattleWidth = 540.0f;
-    private const float PlayerSideMargin = 52.0f;
-    private const float PlayerMinX = PlayerSideMargin;
-    private const float PlayerMaxX = BattleWidth - PlayerSideMargin;
-    private const float PlayerStartX = 270.0f;
-    private const float HeroMuzzleY = 724.0f;
-    private const float TurretMuzzleY = 758.0f;
-    private const float LeftLaneX = 175.0f;
-    private const float RightLaneX = 365.0f;
-    private const float EnemySpawnY = -56.0f;
-    private const float EnemySize = 44.0f;
-    private const float UpgradeTargetSpawnY = -64.0f;
-    private const float UpgradeTargetSize = 50.0f;
-    private const float TargetMissDestroyY = 870.0f;
-    private const float WaveDuration = 66.0f;
-    private const float BossSpawnY = 122.0f;
-    private const float BossAttackInterval = 4.1f;
-    private const float BossWarningDelay = 1.2f;
-    private const float BossWarningTopY = 188.0f;
-    private const float BossWarningBottomY = 820.0f;
-    private const float BossLaneWidth = 110.0f;
-    private const float BossDangerDistance = 58.0f;
-    private const float HeroHitLineY = 760.0f;
-    private const float TrainHitLineY = 820.0f;
-    private const float HeroHitDistance = 46.0f;
-    private const int EnemyHeroDamage = 18;
-    private const int EnemyTrainDamage = 7;
-    private const int BossMaxHp = 260;
-    private const int BossLaneDamage = 16;
-    private const int BaseScrapReward = 60;
-    private const int BaseFuelReward = 10;
-    private const int BaseFoodReward = 8;
-    private const int BasePartsReward = 1;
-    private const int ScrapPerKillReward = 2;
-    private const int AttackAddAmount = 5;
-    private const float FireRateStep = 0.08f;
-    private const int HealAmount = 18;
+    private const string HeroScenePath = "res://scenes/objects/Hero.tscn";
+    private const string TurretScenePath = "res://scenes/objects/Turret.tscn";
+    private const string BulletScenePath = "res://scenes/objects/Bullet.tscn";
+    private const string EnemyScenePath = "res://scenes/objects/Enemy.tscn";
+    private const string PickupsScenePath = "res://scenes/objects/Pickups.tscn";
 
+    private LevelConfig _level = null!;
     private Control _battleArea = null!;
     private Control _playerRig = null!;
     private ColorRect _trainBase = null!;
+    private PackedScene _heroScene = null!;
+    private PackedScene _turretScene = null!;
+    private PackedScene _bulletScene = null!;
+    private PackedScene _enemyScene = null!;
+    private PackedScene _pickupsScene = null!;
     private Label _weaponStatsLabel = null!;
     private Label _combatStatusLabel = null!;
     private Label _temporaryBuffLabel = null!;
@@ -54,13 +28,17 @@ public partial class BattleScreen : Control
     private float _bossAttackTimer;
     private float _bossWarningTimer;
     private int _killCount;
-    private int _nextUpgradeTypeIndex;
     private int _nextWaveEventIndex;
     private int _nextBossLaneIndex;
     private int _pendingBossLaneIndex = -1;
     private int _temporaryAttackAdd;
-    private int _temporaryFireRateStacks;
     private int _temporaryBulletAdd;
+    private int _bonusScrapReward;
+    private int _enemyScrapReward;
+    private float _temporaryFireRateMultiplier = 1.0f;
+    private float _temporaryAttackMultiplier = 1.0f;
+    private float _temporaryTurretMultiplier = 1.0f;
+    private float _temporaryExplosiveRadius;
     private bool _waveCompleted;
     private bool _bossSpawned;
     private bool _battleEnded;
@@ -79,18 +57,10 @@ public partial class BattleScreen : Control
     private readonly List<WaveSpawnEvent> _waveTimeline = new();
     private readonly List<TimedFeedback> _feedbacks = new();
 
-    private static readonly string[] UpgradeTypes =
-    {
-        "attack_add",
-        "fire_rate",
-        "heal",
-        "bullet_add"
-    };
-
     private enum WaveSpawnKind
     {
         Enemy,
-        UpgradeTarget
+        Pickup
     }
 
     private enum BattlePhase
@@ -104,18 +74,20 @@ public partial class BattleScreen : Control
 
     private sealed class WaveSpawnEvent
     {
-        public WaveSpawnEvent(float time, WaveSpawnKind kind, int laneIndex, string upgradeType = "")
+        public WaveSpawnEvent(float time, WaveSpawnKind kind, int laneIndex, string enemyType, string pickupType)
         {
             Time = time;
             Kind = kind;
             LaneIndex = laneIndex;
-            UpgradeType = upgradeType;
+            EnemyType = enemyType;
+            PickupType = pickupType;
         }
 
         public float Time { get; }
         public WaveSpawnKind Kind { get; }
         public int LaneIndex { get; }
-        public string UpgradeType { get; }
+        public string EnemyType { get; }
+        public string PickupType { get; }
     }
 
     private sealed class TimedFeedback
@@ -132,6 +104,7 @@ public partial class BattleScreen : Control
 
     public override void _Ready()
     {
+        _level = LevelConfig.LoadSelected();
         _battleArea = GetNode<Control>("BattleArea540x960");
         _playerRig = GetNode<Control>("BattleArea540x960/PlayerRig");
         _trainBase = GetNode<ColorRect>("BattleArea540x960/TrainBasePlaceholder");
@@ -141,9 +114,12 @@ public partial class BattleScreen : Control
         _temporaryBuffLabel = GetNode<Label>("BattleArea540x960/TemporaryBuffLabel");
         _trainBaseStartPosition = _trainBase.Position;
         _trainBaseStartColor = _trainBase.Color;
+
+        LoadObjectPrefabs();
+        SpawnPlayerPrefabs();
         ClearTemporaryBuffs();
         BuildWaveTimeline();
-        SetPlayerX(PlayerStartX);
+        SetPlayerX(_level.PlayerStartX);
         RefreshWeaponStats();
         RefreshCombatStatus();
         RefreshTemporaryBuffs();
@@ -176,7 +152,7 @@ public partial class BattleScreen : Control
         }
 
         CheckEnemyLineDamage();
-        RemoveMissedUpgradeTargets();
+        RemoveMissedPickups();
         CheckFailure();
         ProcessFeedbacks((float)delta);
         ProcessTrainHitFeedback((float)delta);
@@ -219,27 +195,51 @@ public partial class BattleScreen : Control
         }
     }
 
+    private GameManager State => GetNode<GameManager>("/root/GameManager");
+
     private void SetPlayerX(float rawX)
     {
-        float clampedX = Mathf.Clamp(rawX, PlayerMinX, PlayerMaxX);
+        float clampedX = Mathf.Clamp(rawX, _level.PlayerMinX, _level.PlayerMaxX);
         _playerRig.Position = new Vector2(clampedX, 0.0f);
     }
 
-    private GameManager State => GetNode<GameManager>("/root/GameManager");
-
-    private int GetDamage()
+    private void LoadObjectPrefabs()
     {
-        return State.GetCannonDamage() + _temporaryAttackAdd;
+        _heroScene = GD.Load<PackedScene>(HeroScenePath);
+        _turretScene = GD.Load<PackedScene>(TurretScenePath);
+        _bulletScene = GD.Load<PackedScene>(BulletScenePath);
+        _enemyScene = GD.Load<PackedScene>(EnemyScenePath);
+        _pickupsScene = GD.Load<PackedScene>(PickupsScenePath);
+    }
+
+    private void SpawnPlayerPrefabs()
+    {
+        _playerRig.AddChild(_heroScene.Instantiate<Control>());
+        _playerRig.AddChild(_turretScene.Instantiate<Control>());
+    }
+
+    private int GetHeroDamage()
+    {
+        return Mathf.Max(1, Mathf.RoundToInt((_level.Player.HeroDamage + State.GetCannonDamageBonus() + _temporaryAttackAdd) * _temporaryAttackMultiplier));
+    }
+
+    private int GetTurretDamage()
+    {
+        return Mathf.Max(1, Mathf.RoundToInt((_level.Player.TurretDamage + State.GetCannonDamageBonus() + _temporaryAttackAdd) * _temporaryAttackMultiplier * _temporaryTurretMultiplier));
     }
 
     private float GetFireInterval()
     {
-        return Mathf.Max(0.16f, State.GetCannonFireInterval() - _temporaryFireRateStacks * FireRateStep);
+        float configInterval = _level.Player.HeroFireRate > 0.0f ? 1.0f / _level.Player.HeroFireRate : State.GetCannonFireInterval();
+        float baseInterval = Mathf.Min(State.GetCannonFireInterval(), configInterval);
+        return Mathf.Max(_level.Player.MinFireInterval, baseInterval / _temporaryFireRateMultiplier);
     }
 
     private void RefreshWeaponStats()
     {
-        _weaponStatsLabel.Text = $"Damage {GetDamage()}\nFire {GetFireInterval():0.00}s";
+        _weaponStatsLabel.Text =
+            $"Hero {GetHeroDamage()}  Turret {GetTurretDamage()}\n" +
+            $"Fire {GetFireInterval():0.00}s";
     }
 
     private void RefreshCombatStatus()
@@ -252,11 +252,11 @@ public partial class BattleScreen : Control
 
     private void RefreshWaveStatus()
     {
-        float displayTime = Mathf.Min(_battleTime, WaveDuration);
+        float displayTime = Mathf.Min(_battleTime, _level.BossStartTime);
         string phaseName = GetWavePhaseName(displayTime);
         _waveStatusLabel.Text = _phase == BattlePhase.Boss
             ? "Boss Phase"
-            : $"Wave {phaseName}  {displayTime:0}/{WaveDuration:0}s";
+            : $"{_level.Id} {phaseName}  {displayTime:0}/{_level.BossStartTime:0}s";
     }
 
     private string GetWavePhaseName(float time)
@@ -266,17 +266,18 @@ public partial class BattleScreen : Control
             return _phase == BattlePhase.Boss ? "Boss" : "Complete";
         }
 
-        if (time < 10.0f)
+        float bossStart = Mathf.Max(1.0f, _level.BossStartTime);
+        if (time < bossStart * 0.15f)
         {
             return "Warmup";
         }
 
-        if (time < 35.0f)
+        if (time < bossStart * 0.45f)
         {
             return "Pressure";
         }
 
-        if (time < 60.0f)
+        if (time < bossStart * 0.75f)
         {
             return "Heavy";
         }
@@ -286,111 +287,133 @@ public partial class BattleScreen : Control
 
     private void RefreshTemporaryBuffs()
     {
+        string explosiveText = _temporaryExplosiveRadius > 0.0f ? "ON" : "OFF";
         _temporaryBuffLabel.Text =
             "Buffs\n" +
-            $"ATK +{_temporaryAttackAdd}\n" +
-            $"Rate +{_temporaryFireRateStacks}\n" +
-            $"Bullets +{_temporaryBulletAdd}";
+            $"ATK +{_temporaryAttackAdd}  DMG x{_temporaryAttackMultiplier:0.0}\n" +
+            $"Rate x{_temporaryFireRateMultiplier:0.0}  Bullets +{_temporaryBulletAdd}\n" +
+            $"Scrap +{_bonusScrapReward}  EXP {explosiveText}";
     }
 
     private void FireVolley()
     {
         float playerX = _playerRig.Position.X;
-        SpawnBullet(new Vector2(playerX - 11.0f, HeroMuzzleY));
-        SpawnBullet(new Vector2(playerX - 5.0f, TurretMuzzleY));
+        SpawnBullet(new Vector2(playerX - 11.0f, _level.Objects.HeroMuzzleY), GetHeroDamage());
 
-        for (int i = 0; i < _temporaryBulletAdd; i += 1)
+        int turretShotCount = Mathf.Max(1, _level.Player.BulletCount + _temporaryBulletAdd);
+        for (int i = 0; i < turretShotCount; i += 1)
         {
-            float offset = i % 2 == 0 ? 13.0f + i * 4.0f : -19.0f - i * 4.0f;
-            SpawnBullet(new Vector2(playerX + offset, TurretMuzzleY + 4.0f));
+            float offset = GetTurretShotOffset(i, turretShotCount);
+            SpawnBullet(new Vector2(playerX + offset, _level.Objects.TurretMuzzleY + (i % 2 == 0 ? 0.0f : 4.0f)), GetTurretDamage());
         }
     }
 
-    private void SpawnBullet(Vector2 position)
+    private static float GetTurretShotOffset(int index, int count)
     {
-        Bullet bullet = new Bullet
+        if (count <= 1)
         {
-            Position = position,
-            Size = new Vector2(10.0f, 20.0f),
-            Color = new Color(1.0f, 0.94f, 0.35f, 1.0f),
-            Damage = GetDamage()
-        };
+            return -5.0f;
+        }
+
+        return -5.0f + (index - (count - 1) * 0.5f) * 18.0f;
+    }
+
+    private void SpawnBullet(Vector2 position, int damage)
+    {
+        Bullet bullet = _bulletScene.Instantiate<Bullet>();
+        bullet.Position = position;
+        bullet.Size = new Vector2(_level.Objects.BulletWidth, _level.Objects.BulletHeight);
+        bullet.Color = new Color(1.0f, 0.94f, 0.35f, 1.0f);
+        bullet.Speed = _level.Objects.BulletSpeed;
+        bullet.Damage = damage;
+        bullet.ExplosionRadius = _temporaryExplosiveRadius;
 
         _battleArea.AddChild(bullet);
     }
 
-    private void SpawnEnemy(int laneIndex)
+    private void SpawnEnemy(int laneIndex, string enemyTypeId)
     {
         float laneX = GetLaneX(laneIndex);
+        LevelConfig.EnemyTypeConfig enemyConfig = _level.GetEnemyType(enemyTypeId);
 
-        Enemy enemy = new Enemy
-        {
-            Position = new Vector2(laneX - EnemySize * 0.5f, EnemySpawnY),
-            Size = new Vector2(EnemySize, EnemySize),
-            Color = new Color(0.85f, 0.24f, 0.2f, 1.0f),
-            MaxHp = 26,
-            Speed = 90.0f
-        };
-        enemy.Died += OnEnemyDied;
+        Enemy enemy = _enemyScene.Instantiate<Enemy>();
+        enemy.Position = new Vector2(laneX - _level.Objects.EnemySize * 0.5f, _level.Objects.EnemySpawnY);
+        enemy.Size = new Vector2(_level.Objects.EnemySize, _level.Objects.EnemySize);
+        enemy.Color = enemyConfig.Color;
+        enemy.MaxHp = enemyConfig.Hp;
+        enemy.Speed = enemyConfig.Speed;
+        enemy.HeroLineDamage = enemyConfig.Damage;
+        enemy.TrainLineDamage = enemyConfig.TrainDamage;
+        enemy.ScrapReward = enemyConfig.Reward;
+        enemy.Died += position => OnEnemyDied(position, enemy.ScrapReward);
 
         _battleArea.AddChild(enemy);
     }
 
-    private void SpawnUpgradeTarget(int laneIndex, string upgradeType)
+    private void SpawnPickup(int laneIndex, string pickupId)
     {
         float laneX = GetLaneX(laneIndex);
+        LevelConfig.PickupConfig pickupConfig = _level.GetPickup(pickupId);
 
-        UpgradeTarget target = new UpgradeTarget
-        {
-            Position = new Vector2(laneX - UpgradeTargetSize * 0.5f, UpgradeTargetSpawnY),
-            Size = new Vector2(UpgradeTargetSize, UpgradeTargetSize),
-            Color = GetUpgradeColor(upgradeType),
-            MaxHp = 22,
-            Speed = 76.0f,
-            UpgradeType = upgradeType
-        };
-        target.Destroyed += OnUpgradeTargetDestroyed;
+        Pickup pickup = _pickupsScene.Instantiate<Pickup>();
+        pickup.Position = new Vector2(laneX - _level.Objects.PickupSize * 0.5f, _level.Objects.PickupSpawnY);
+        pickup.Size = new Vector2(_level.Objects.PickupSize, _level.Objects.PickupSize);
+        pickup.Color = pickupConfig.Color;
+        pickup.MaxHp = pickupConfig.Hp;
+        pickup.Speed = pickupConfig.Speed;
+        pickup.UpgradeType = pickupId;
+        pickup.DisplayName = pickupConfig.Name;
+        pickup.Destroyed += OnPickupDestroyed;
 
-        _battleArea.AddChild(target);
+        _battleArea.AddChild(pickup);
     }
 
     private float GetLaneX(int laneIndex)
     {
-        return laneIndex % 2 == 0 ? LeftLaneX : RightLaneX;
+        return _level.GetLaneX(laneIndex);
     }
 
-    private Color GetUpgradeColor(string upgradeType)
+    private void OnPickupDestroyed(string pickupId, Vector2 position)
     {
-        return upgradeType switch
-        {
-            "attack_add" => new Color(0.98f, 0.62f, 0.18f, 1.0f),
-            "fire_rate" => new Color(0.34f, 0.92f, 1.0f, 1.0f),
-            "heal" => new Color(0.28f, 0.9f, 0.46f, 1.0f),
-            "bullet_add" => new Color(0.76f, 0.58f, 1.0f, 1.0f),
-            _ => new Color(0.8f, 0.8f, 0.8f, 1.0f)
-        };
-    }
-
-    private void OnUpgradeTargetDestroyed(string upgradeType, Vector2 position)
-    {
-        string feedbackText = "";
-        switch (upgradeType)
+        LevelConfig.PickupConfig pickup = _level.GetPickup(pickupId);
+        string feedbackText = pickup.Name;
+        switch (pickup.Kind)
         {
             case "attack_add":
-                _temporaryAttackAdd += AttackAddAmount;
-                feedbackText = $"+{AttackAddAmount} ATK";
+                int attackAdd = Mathf.RoundToInt(pickup.Value);
+                _temporaryAttackAdd += attackAdd;
+                feedbackText = $"+{attackAdd} ATK";
                 break;
             case "fire_rate":
-                _temporaryFireRateStacks += 1;
-                feedbackText = "FIRE RATE UP";
+                _temporaryFireRateMultiplier *= Mathf.Max(1.0f, pickup.Value);
+                feedbackText = $"RATE x{_temporaryFireRateMultiplier:0.0}";
                 break;
             case "heal":
-                State.HealTrain(HealAmount);
-                feedbackText = $"+{HealAmount} TRAIN HP";
+                int heal = Mathf.RoundToInt(pickup.Value);
+                State.HealTrain(heal);
+                feedbackText = $"+{heal} TRAIN HP";
                 break;
             case "bullet_add":
-                _temporaryBulletAdd += 1;
-                feedbackText = "+1 BULLET";
+                int bullets = Mathf.Max(1, Mathf.RoundToInt(pickup.Value));
+                _temporaryBulletAdd += bullets;
+                feedbackText = $"+{bullets} BULLET";
+                break;
+            case "coins":
+                int scrap = Mathf.RoundToInt(pickup.Value);
+                _bonusScrapReward += scrap;
+                feedbackText = $"+{scrap} SCRAP";
+                break;
+            case "attack_mult":
+                _temporaryAttackMultiplier *= Mathf.Max(1.0f, pickup.Value);
+                feedbackText = $"ATK x{_temporaryAttackMultiplier:0.0}";
+                break;
+            case "turret_mult":
+                _temporaryTurretMultiplier *= Mathf.Max(1.0f, pickup.Value);
+                feedbackText = $"TURRET x{_temporaryTurretMultiplier:0.0}";
+                break;
+            case "explosive":
+                _temporaryExplosiveRadius = Mathf.Max(_temporaryExplosiveRadius, _level.Player.ExplosiveRadius * Mathf.Max(1.0f, pickup.Value));
+                feedbackText = "EXPLOSIVE";
                 break;
         }
 
@@ -401,11 +424,12 @@ public partial class BattleScreen : Control
         RefreshTemporaryBuffs();
     }
 
-    private void OnEnemyDied(Vector2 position)
+    private void OnEnemyDied(Vector2 position, int scrapReward)
     {
         _killCount += 1;
+        _enemyScrapReward += scrapReward;
         SpawnBurst(position, new Color(1.0f, 0.46f, 0.26f, 0.88f));
-        ShowFloatingText("+1 Kill", position + new Vector2(-32.0f, -18.0f), new Color(1.0f, 0.78f, 0.44f, 1.0f), 16);
+        ShowFloatingText($"+{scrapReward} Scrap", position + new Vector2(-42.0f, -18.0f), new Color(1.0f, 0.78f, 0.44f, 1.0f), 16);
         RefreshCombatStatus();
     }
 
@@ -418,34 +442,34 @@ public partial class BattleScreen : Control
                 continue;
             }
 
-            if (!enemy.CheckedHeroLine && enemy.BottomY() >= HeroHitLineY)
+            if (!enemy.CheckedHeroLine && enemy.BottomY() >= _level.HeroLineY)
             {
                 enemy.CheckedHeroLine = true;
-                if (Mathf.Abs(enemy.CenterX() - _playerRig.Position.X) <= HeroHitDistance)
+                if (Mathf.Abs(enemy.CenterX() - _playerRig.Position.X) <= _level.HeroBlockRadius)
                 {
-                    DamageTrainWithFeedback(EnemyHeroDamage, new Vector2(enemy.CenterX() - 56.0f, HeroHitLineY - 28.0f), "Hero Hit");
+                    DamageTrainWithFeedback(enemy.HeroLineDamage, new Vector2(enemy.CenterX() - 56.0f, _level.HeroLineY - 28.0f), "Hero Hit");
                     enemy.QueueFree();
                     CheckFailure();
                     continue;
                 }
             }
 
-            if (enemy.BottomY() >= TrainHitLineY)
+            if (enemy.BottomY() >= _level.TrainLineY)
             {
-                DamageTrainWithFeedback(EnemyTrainDamage, new Vector2(enemy.CenterX() - 56.0f, TrainHitLineY - 34.0f), "Train Hit");
+                DamageTrainWithFeedback(enemy.TrainLineDamage, new Vector2(enemy.CenterX() - 56.0f, _level.TrainLineY - 34.0f), "Train Hit");
                 enemy.QueueFree();
                 CheckFailure();
             }
         }
     }
 
-    private void RemoveMissedUpgradeTargets()
+    private void RemoveMissedPickups()
     {
         foreach (Node child in _battleArea.GetChildren())
         {
-            if (child is UpgradeTarget target && !target.IsQueuedForDeletion() && target.BottomY() >= TargetMissDestroyY)
+            if (child is Pickup pickup && !pickup.IsQueuedForDeletion() && pickup.BottomY() >= _level.Objects.PickupMissY)
             {
-                target.QueueFree();
+                pickup.QueueFree();
             }
         }
     }
@@ -453,8 +477,13 @@ public partial class BattleScreen : Control
     private void ClearTemporaryBuffs()
     {
         _temporaryAttackAdd = 0;
-        _temporaryFireRateStacks = 0;
         _temporaryBulletAdd = 0;
+        _bonusScrapReward = 0;
+        _enemyScrapReward = 0;
+        _temporaryFireRateMultiplier = 1.0f;
+        _temporaryAttackMultiplier = 1.0f;
+        _temporaryTurretMultiplier = 1.0f;
+        _temporaryExplosiveRadius = 0.0f;
     }
 
     private void BuildWaveTimeline()
@@ -463,61 +492,14 @@ public partial class BattleScreen : Control
         _nextWaveEventIndex = 0;
         _battleTime = 0.0f;
         _waveCompleted = false;
-        _nextUpgradeTypeIndex = 0;
 
-        int laneIndex = 0;
-        for (float time = 1.8f; time < 10.0f; time += 3.6f)
+        foreach (LevelConfig.TimelineEventConfig item in _level.Timeline)
         {
-            AddEnemyEvent(time, laneIndex);
-            laneIndex += 1;
+            WaveSpawnKind kind = item.Type == "pickup" ? WaveSpawnKind.Pickup : WaveSpawnKind.Enemy;
+            _waveTimeline.Add(new WaveSpawnEvent(item.Time, kind, item.Lane, item.Enemy, item.Pickup));
         }
 
-        for (float time = 10.5f; time < 34.0f; time += 2.6f)
-        {
-            AddEnemyEvent(time, laneIndex);
-            laneIndex += 1;
-        }
-
-        AddUpgradeEvent(12.0f, 1);
-        AddUpgradeEvent(22.0f, 0);
-        AddUpgradeEvent(33.0f, 1);
-
-        int heavyIndex = 0;
-        for (float time = 34.0f; time < 57.0f; time += 2.1f)
-        {
-            AddEnemyEvent(time, laneIndex);
-            if (heavyIndex % 5 == 2)
-            {
-                AddEnemyEvent(time + 0.45f, laneIndex + 1);
-            }
-
-            laneIndex += 1;
-            heavyIndex += 1;
-        }
-
-        AddUpgradeEvent(45.0f, 0);
-        AddUpgradeEvent(56.0f, 1);
-
-        for (float time = 57.0f; time < 65.0f; time += 1.9f)
-        {
-            AddEnemyEvent(time, laneIndex);
-            laneIndex += 1;
-        }
-
-        AddUpgradeEvent(61.0f, 0);
         _waveTimeline.Sort((left, right) => left.Time.CompareTo(right.Time));
-    }
-
-    private void AddEnemyEvent(float time, int laneIndex)
-    {
-        _waveTimeline.Add(new WaveSpawnEvent(time, WaveSpawnKind.Enemy, laneIndex));
-    }
-
-    private void AddUpgradeEvent(float time, int laneIndex)
-    {
-        string upgradeType = UpgradeTypes[_nextUpgradeTypeIndex % UpgradeTypes.Length];
-        _nextUpgradeTypeIndex += 1;
-        _waveTimeline.Add(new WaveSpawnEvent(time, WaveSpawnKind.UpgradeTarget, laneIndex, upgradeType));
     }
 
     private void RunWaveTimeline()
@@ -527,17 +509,17 @@ public partial class BattleScreen : Control
             WaveSpawnEvent spawnEvent = _waveTimeline[_nextWaveEventIndex];
             if (spawnEvent.Kind == WaveSpawnKind.Enemy)
             {
-                SpawnEnemy(spawnEvent.LaneIndex);
+                SpawnEnemy(spawnEvent.LaneIndex, spawnEvent.EnemyType);
             }
             else
             {
-                SpawnUpgradeTarget(spawnEvent.LaneIndex, spawnEvent.UpgradeType);
+                SpawnPickup(spawnEvent.LaneIndex, spawnEvent.PickupType);
             }
 
             _nextWaveEventIndex += 1;
         }
 
-        if (!_waveCompleted && _battleTime >= WaveDuration)
+        if (!_waveCompleted && _battleTime >= _level.BossStartTime)
         {
             _waveCompleted = true;
             StartBossPhase();
@@ -555,7 +537,7 @@ public partial class BattleScreen : Control
         SpawnBoss();
         _phase = BattlePhase.Boss;
         _bossSpawned = true;
-        _bossAttackTimer = 1.6f;
+        _bossAttackTimer = _level.Boss.InitialAttackDelay;
         ShowBanner("BOSS INCOMING", new Color(1.0f, 0.56f, 0.26f, 1.0f));
         RefreshWaveStatus();
     }
@@ -564,7 +546,7 @@ public partial class BattleScreen : Control
     {
         foreach (Node child in _battleArea.GetChildren())
         {
-            if (child is Enemy or UpgradeTarget)
+            if (child is Enemy or Pickup)
             {
                 child.QueueFree();
             }
@@ -575,10 +557,11 @@ public partial class BattleScreen : Control
     {
         _boss = new Boss
         {
-            Position = new Vector2(140.0f, BossSpawnY),
-            Size = new Vector2(260.0f, 92.0f),
+            Position = new Vector2(_level.Boss.SpawnX, _level.Boss.SpawnY),
+            Size = new Vector2(_level.Boss.Width, _level.Boss.Height),
             Color = new Color(0.42f, 0.28f, 0.2f, 1.0f),
-            MaxHp = BossMaxHp
+            MaxHp = _level.Boss.MaxHp,
+            DisplayName = _level.Boss.Name
         };
         _boss.Defeated += OnBossDefeated;
         _boss.PhaseChanged += OnBossPhaseChanged;
@@ -603,21 +586,21 @@ public partial class BattleScreen : Control
         {
             StartBossLaneWarning(_nextBossLaneIndex);
             _nextBossLaneIndex += 1;
-            _bossAttackTimer = BossAttackInterval;
+            _bossAttackTimer = _level.Boss.AttackInterval;
         }
     }
 
     private void StartBossLaneWarning(int laneIndex)
     {
         _pendingBossLaneIndex = laneIndex;
-        _bossWarningTimer = BossWarningDelay;
+        _bossWarningTimer = _level.Boss.WarningDelay;
 
         float laneX = GetLaneX(laneIndex);
         _bossWarningRect?.QueueFree();
         _bossWarningRect = new ColorRect
         {
-            Position = new Vector2(laneX - BossLaneWidth * 0.5f, BossWarningTopY),
-            Size = new Vector2(BossLaneWidth, BossWarningBottomY - BossWarningTopY),
+            Position = new Vector2(laneX - _level.Boss.WarningWidth * 0.5f, _level.Boss.WarningTopY),
+            Size = new Vector2(_level.Boss.WarningWidth, _level.Boss.WarningBottomY - _level.Boss.WarningTopY),
             Color = new Color(1.0f, 0.16f, 0.08f, 0.38f),
             MouseFilter = MouseFilterEnum.Ignore
         };
@@ -630,9 +613,9 @@ public partial class BattleScreen : Control
         _bossWarningRect?.QueueFree();
         _bossWarningRect = null;
 
-        if (Mathf.Abs(_playerRig.Position.X - dangerX) <= BossDangerDistance)
+        if (Mathf.Abs(_playerRig.Position.X - dangerX) <= _level.Boss.DangerRadius)
         {
-            DamageTrainWithFeedback(BossLaneDamage, new Vector2(dangerX - 58.0f, 704.0f), "Boss Strike");
+            DamageTrainWithFeedback(_level.Boss.AttackDamage, new Vector2(dangerX - 58.0f, 704.0f), "Boss Strike");
             CheckFailure();
         }
 
@@ -687,7 +670,7 @@ public partial class BattleScreen : Control
             MouseFilter = MouseFilterEnum.Stop
         };
 
-        Label title = new Label
+        Label title = new()
         {
             Position = new Vector2(0.0f, 26.0f),
             Size = new Vector2(_resultPanel.Size.X, 52.0f),
@@ -699,7 +682,7 @@ public partial class BattleScreen : Control
         title.AddThemeFontSizeOverride("font_size", 34);
         _resultPanel.AddChild(title);
 
-        Label summary = new Label
+        Label summary = new()
         {
             Position = new Vector2(24.0f, 88.0f),
             Size = new Vector2(_resultPanel.Size.X - 48.0f, 150.0f),
@@ -713,7 +696,7 @@ public partial class BattleScreen : Control
         summary.AddThemeFontSizeOverride("font_size", 20);
         _resultPanel.AddChild(summary);
 
-        Button returnButton = new Button
+        Button returnButton = new()
         {
             Position = new Vector2(64.0f, 250.0f),
             Size = new Vector2(272.0f, 56.0f),
@@ -738,10 +721,10 @@ public partial class BattleScreen : Control
             return;
         }
 
-        _scrapReward = BaseScrapReward + _killCount * ScrapPerKillReward;
-        _fuelReward = BaseFuelReward;
-        _foodReward = BaseFoodReward;
-        _partsReward = BasePartsReward;
+        _scrapReward = _level.Rewards.ScrapBase + _level.Rewards.ScrapPerKill * _killCount + _enemyScrapReward + _bonusScrapReward;
+        _fuelReward = _level.Rewards.Fuel;
+        _foodReward = _level.Rewards.Food;
+        _partsReward = _level.Rewards.Parts;
     }
 
     private void OnReturnToTrainPressed()
@@ -760,7 +743,7 @@ public partial class BattleScreen : Control
     {
         foreach (Node child in _battleArea.GetChildren())
         {
-            if (child is Enemy or UpgradeTarget or Bullet or Boss)
+            if (child is Enemy or Pickup or Bullet or Boss)
             {
                 child.QueueFree();
             }
@@ -810,7 +793,7 @@ public partial class BattleScreen : Control
 
     private void ShowFloatingText(string text, Vector2 position, Color color, int fontSize, float duration = 0.85f, Vector2? endPosition = null)
     {
-        Label label = new Label
+        Label label = new()
         {
             Position = position,
             Size = new Vector2(320.0f, 38.0f),
@@ -835,7 +818,7 @@ public partial class BattleScreen : Control
 
     private void SpawnBurst(Vector2 center, Color color)
     {
-        ColorRect burst = new ColorRect
+        ColorRect burst = new()
         {
             Position = center - new Vector2(14.0f, 14.0f),
             Size = new Vector2(28.0f, 28.0f),

@@ -7,6 +7,9 @@ public partial class Enemy : ColorRect
 
     [Export] public float Speed { get; set; } = 96.0f;
     [Export] public int MaxHp { get; set; } = 30;
+    [Export] public int HeroLineDamage { get; set; } = 12;
+    [Export] public int TrainLineDamage { get; set; } = 6;
+    [Export] public int ScrapReward { get; set; } = 2;
 
     public int Hp { get; private set; }
     public bool CheckedHeroLine { get; set; }
