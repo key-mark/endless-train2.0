@@ -3,7 +3,7 @@ using Godot;
 public partial class UpgradeTarget : ColorRect
 {
     [Signal]
-    public delegate void DestroyedEventHandler(string upgradeType);
+    public delegate void DestroyedEventHandler(string upgradeType, Vector2 position);
 
     [Export] public float Speed { get; set; } = 82.0f;
     [Export] public int MaxHp { get; set; } = 25;
@@ -14,10 +14,13 @@ public partial class UpgradeTarget : ColorRect
     private Label _typeLabel = null!;
     private Label _hpLabel = null!;
     private ColorRect _hpBar = null!;
+    private Color _baseColor;
+    private float _hitFlashTimer;
 
     public override void _Ready()
     {
         Hp = MaxHp;
+        _baseColor = Color;
 
         _typeLabel = new Label
         {
@@ -65,6 +68,19 @@ public partial class UpgradeTarget : ColorRect
     public override void _Process(double delta)
     {
         Position += Vector2.Down * Speed * (float)delta;
+
+        if (_hitFlashTimer > 0.0f)
+        {
+            _hitFlashTimer -= (float)delta;
+            float ratio = Mathf.Clamp(_hitFlashTimer / 0.12f, 0.0f, 1.0f);
+            Color = _baseColor.Lerp(new Color(1.0f, 1.0f, 1.0f, 1.0f), ratio);
+            Scale = new Vector2(1.0f + ratio * 0.08f, 1.0f + ratio * 0.08f);
+        }
+        else
+        {
+            Color = _baseColor;
+            Scale = Vector2.One;
+        }
     }
 
     public Rect2 GetHitRect()
@@ -82,10 +98,11 @@ public partial class UpgradeTarget : ColorRect
         Hp = Mathf.Max(0, Hp - damage);
         _hpLabel.Text = $"HP {Hp}";
         _hpBar.Size = new Vector2(Size.X * Hp / MaxHp, _hpBar.Size.Y);
+        _hitFlashTimer = 0.12f;
 
         if (Hp <= 0)
         {
-            EmitSignal(SignalName.Destroyed, UpgradeType);
+            EmitSignal(SignalName.Destroyed, UpgradeType, new Vector2(Position.X + Size.X * 0.5f, Position.Y + Size.Y * 0.5f));
             QueueFree();
         }
     }

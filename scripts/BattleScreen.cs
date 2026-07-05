@@ -17,10 +17,10 @@ public partial class BattleScreen : Control
     private const float UpgradeTargetSpawnY = -64.0f;
     private const float UpgradeTargetSize = 50.0f;
     private const float TargetMissDestroyY = 870.0f;
-    private const float WaveDuration = 72.0f;
+    private const float WaveDuration = 66.0f;
     private const float BossSpawnY = 122.0f;
-    private const float BossAttackInterval = 3.8f;
-    private const float BossWarningDelay = 1.15f;
+    private const float BossAttackInterval = 4.1f;
+    private const float BossWarningDelay = 1.2f;
     private const float BossWarningTopY = 188.0f;
     private const float BossWarningBottomY = 820.0f;
     private const float BossLaneWidth = 110.0f;
@@ -28,10 +28,10 @@ public partial class BattleScreen : Control
     private const float HeroHitLineY = 760.0f;
     private const float TrainHitLineY = 820.0f;
     private const float HeroHitDistance = 46.0f;
-    private const int EnemyHeroDamage = 20;
-    private const int EnemyTrainDamage = 8;
-    private const int BossMaxHp = 300;
-    private const int BossLaneDamage = 18;
+    private const int EnemyHeroDamage = 18;
+    private const int EnemyTrainDamage = 7;
+    private const int BossMaxHp = 260;
+    private const int BossLaneDamage = 16;
     private const int BaseScrapReward = 60;
     private const int BaseFuelReward = 10;
     private const int BaseFoodReward = 8;
@@ -43,6 +43,7 @@ public partial class BattleScreen : Control
 
     private Control _battleArea = null!;
     private Control _playerRig = null!;
+    private ColorRect _trainBase = null!;
     private Label _weaponStatsLabel = null!;
     private Label _combatStatusLabel = null!;
     private Label _temporaryBuffLabel = null!;
@@ -72,7 +73,11 @@ public partial class BattleScreen : Control
     private Boss _boss = null!;
     private ColorRect _bossWarningRect = null!;
     private ColorRect _resultPanel = null!;
+    private Vector2 _trainBaseStartPosition;
+    private Color _trainBaseStartColor;
+    private float _trainHitFeedbackTimer;
     private readonly List<WaveSpawnEvent> _waveTimeline = new();
+    private readonly List<TimedFeedback> _feedbacks = new();
 
     private static readonly string[] UpgradeTypes =
     {
@@ -113,14 +118,29 @@ public partial class BattleScreen : Control
         public string UpgradeType { get; }
     }
 
+    private sealed class TimedFeedback
+    {
+        public Control Node { get; init; } = null!;
+        public float Duration { get; init; }
+        public float Age { get; set; }
+        public Vector2 StartPosition { get; init; }
+        public Vector2 EndPosition { get; init; }
+        public Vector2 StartScale { get; init; } = Vector2.One;
+        public Vector2 EndScale { get; init; } = Vector2.One;
+        public Color StartModulate { get; init; } = Colors.White;
+    }
+
     public override void _Ready()
     {
         _battleArea = GetNode<Control>("BattleArea540x960");
         _playerRig = GetNode<Control>("BattleArea540x960/PlayerRig");
+        _trainBase = GetNode<ColorRect>("BattleArea540x960/TrainBasePlaceholder");
         _waveStatusLabel = GetNode<Label>("BattleArea540x960/BattleAreaLabel");
         _weaponStatsLabel = GetNode<Label>("BattleArea540x960/WeaponStatsLabel");
         _combatStatusLabel = GetNode<Label>("BattleArea540x960/CombatStatusLabel");
         _temporaryBuffLabel = GetNode<Label>("BattleArea540x960/TemporaryBuffLabel");
+        _trainBaseStartPosition = _trainBase.Position;
+        _trainBaseStartColor = _trainBase.Color;
         ClearTemporaryBuffs();
         BuildWaveTimeline();
         SetPlayerX(PlayerStartX);
@@ -158,6 +178,8 @@ public partial class BattleScreen : Control
         CheckEnemyLineDamage();
         RemoveMissedUpgradeTargets();
         CheckFailure();
+        ProcessFeedbacks((float)delta);
+        ProcessTrainHitFeedback((float)delta);
         RefreshWeaponStats();
         RefreshCombatStatus();
         RefreshTemporaryBuffs();
@@ -217,22 +239,24 @@ public partial class BattleScreen : Control
 
     private void RefreshWeaponStats()
     {
-        _weaponStatsLabel.Text = $"Cannon Damage: {GetDamage()}\nFire Interval: {GetFireInterval():0.00}s";
+        _weaponStatsLabel.Text = $"Damage {GetDamage()}\nFire {GetFireInterval():0.00}s";
     }
 
     private void RefreshCombatStatus()
     {
         _combatStatusLabel.Text =
-            $"Train HP: {State.TrainCurrentHp}/{State.TrainMaxHp}\n" +
-            $"Kill Count: {_killCount}\n" +
-            $"Current Station: {State.CurrentStation}";
+            $"Train HP {State.TrainCurrentHp}/{State.TrainMaxHp}\n" +
+            $"Kills {_killCount}\n" +
+            $"Station {State.CurrentStation}";
     }
 
     private void RefreshWaveStatus()
     {
         float displayTime = Mathf.Min(_battleTime, WaveDuration);
         string phaseName = GetWavePhaseName(displayTime);
-        _waveStatusLabel.Text = $"Wave: {phaseName}  {displayTime:0}/{WaveDuration:0}s";
+        _waveStatusLabel.Text = _phase == BattlePhase.Boss
+            ? "Boss Phase"
+            : $"Wave {phaseName}  {displayTime:0}/{WaveDuration:0}s";
     }
 
     private string GetWavePhaseName(float time)
@@ -263,9 +287,9 @@ public partial class BattleScreen : Control
     private void RefreshTemporaryBuffs()
     {
         _temporaryBuffLabel.Text =
-            "Temporary Buffs\n" +
+            "Buffs\n" +
             $"ATK +{_temporaryAttackAdd}\n" +
-            $"Fire Rate x{_temporaryFireRateStacks}\n" +
+            $"Rate +{_temporaryFireRateStacks}\n" +
             $"Bullets +{_temporaryBulletAdd}";
     }
 
@@ -304,8 +328,8 @@ public partial class BattleScreen : Control
             Position = new Vector2(laneX - EnemySize * 0.5f, EnemySpawnY),
             Size = new Vector2(EnemySize, EnemySize),
             Color = new Color(0.85f, 0.24f, 0.2f, 1.0f),
-            MaxHp = 30,
-            Speed = 96.0f
+            MaxHp = 26,
+            Speed = 90.0f
         };
         enemy.Died += OnEnemyDied;
 
@@ -321,8 +345,8 @@ public partial class BattleScreen : Control
             Position = new Vector2(laneX - UpgradeTargetSize * 0.5f, UpgradeTargetSpawnY),
             Size = new Vector2(UpgradeTargetSize, UpgradeTargetSize),
             Color = GetUpgradeColor(upgradeType),
-            MaxHp = 25,
-            Speed = 82.0f,
+            MaxHp = 22,
+            Speed = 76.0f,
             UpgradeType = upgradeType
         };
         target.Destroyed += OnUpgradeTargetDestroyed;
@@ -347,32 +371,41 @@ public partial class BattleScreen : Control
         };
     }
 
-    private void OnUpgradeTargetDestroyed(string upgradeType)
+    private void OnUpgradeTargetDestroyed(string upgradeType, Vector2 position)
     {
+        string feedbackText = "";
         switch (upgradeType)
         {
             case "attack_add":
                 _temporaryAttackAdd += AttackAddAmount;
+                feedbackText = $"+{AttackAddAmount} ATK";
                 break;
             case "fire_rate":
                 _temporaryFireRateStacks += 1;
+                feedbackText = "FIRE RATE UP";
                 break;
             case "heal":
                 State.HealTrain(HealAmount);
+                feedbackText = $"+{HealAmount} TRAIN HP";
                 break;
             case "bullet_add":
                 _temporaryBulletAdd += 1;
+                feedbackText = "+1 BULLET";
                 break;
         }
 
+        SpawnBurst(position, new Color(0.5f, 1.0f, 0.78f, 0.9f));
+        ShowFloatingText(feedbackText, position + new Vector2(-70.0f, -24.0f), new Color(0.72f, 1.0f, 0.86f, 1.0f), 18);
         RefreshWeaponStats();
         RefreshCombatStatus();
         RefreshTemporaryBuffs();
     }
 
-    private void OnEnemyDied()
+    private void OnEnemyDied(Vector2 position)
     {
         _killCount += 1;
+        SpawnBurst(position, new Color(1.0f, 0.46f, 0.26f, 0.88f));
+        ShowFloatingText("+1 Kill", position + new Vector2(-32.0f, -18.0f), new Color(1.0f, 0.78f, 0.44f, 1.0f), 16);
         RefreshCombatStatus();
     }
 
@@ -390,7 +423,7 @@ public partial class BattleScreen : Control
                 enemy.CheckedHeroLine = true;
                 if (Mathf.Abs(enemy.CenterX() - _playerRig.Position.X) <= HeroHitDistance)
                 {
-                    State.DamageTrain(EnemyHeroDamage);
+                    DamageTrainWithFeedback(EnemyHeroDamage, new Vector2(enemy.CenterX() - 56.0f, HeroHitLineY - 28.0f), "Hero Hit");
                     enemy.QueueFree();
                     CheckFailure();
                     continue;
@@ -399,7 +432,7 @@ public partial class BattleScreen : Control
 
             if (enemy.BottomY() >= TrainHitLineY)
             {
-                State.DamageTrain(EnemyTrainDamage);
+                DamageTrainWithFeedback(EnemyTrainDamage, new Vector2(enemy.CenterX() - 56.0f, TrainHitLineY - 34.0f), "Train Hit");
                 enemy.QueueFree();
                 CheckFailure();
             }
@@ -433,27 +466,27 @@ public partial class BattleScreen : Control
         _nextUpgradeTypeIndex = 0;
 
         int laneIndex = 0;
-        for (float time = 1.5f; time < 10.0f; time += 3.2f)
+        for (float time = 1.8f; time < 10.0f; time += 3.6f)
         {
             AddEnemyEvent(time, laneIndex);
             laneIndex += 1;
         }
 
-        for (float time = 10.5f; time < 35.0f; time += 2.4f)
+        for (float time = 10.5f; time < 34.0f; time += 2.6f)
         {
             AddEnemyEvent(time, laneIndex);
             laneIndex += 1;
         }
 
-        AddUpgradeEvent(14.0f, 1);
-        AddUpgradeEvent(23.0f, 0);
-        AddUpgradeEvent(32.0f, 1);
+        AddUpgradeEvent(12.0f, 1);
+        AddUpgradeEvent(22.0f, 0);
+        AddUpgradeEvent(33.0f, 1);
 
         int heavyIndex = 0;
-        for (float time = 35.0f; time < 60.0f; time += 1.9f)
+        for (float time = 34.0f; time < 57.0f; time += 2.1f)
         {
             AddEnemyEvent(time, laneIndex);
-            if (heavyIndex % 4 == 2)
+            if (heavyIndex % 5 == 2)
             {
                 AddEnemyEvent(time + 0.45f, laneIndex + 1);
             }
@@ -462,16 +495,16 @@ public partial class BattleScreen : Control
             heavyIndex += 1;
         }
 
-        AddUpgradeEvent(42.0f, 0);
-        AddUpgradeEvent(53.0f, 1);
+        AddUpgradeEvent(45.0f, 0);
+        AddUpgradeEvent(56.0f, 1);
 
-        for (float time = 60.0f; time < 70.0f; time += 1.7f)
+        for (float time = 57.0f; time < 65.0f; time += 1.9f)
         {
             AddEnemyEvent(time, laneIndex);
             laneIndex += 1;
         }
 
-        AddUpgradeEvent(64.0f, 0);
+        AddUpgradeEvent(61.0f, 0);
         _waveTimeline.Sort((left, right) => left.Time.CompareTo(right.Time));
     }
 
@@ -523,6 +556,7 @@ public partial class BattleScreen : Control
         _phase = BattlePhase.Boss;
         _bossSpawned = true;
         _bossAttackTimer = 1.6f;
+        ShowBanner("BOSS INCOMING", new Color(1.0f, 0.56f, 0.26f, 1.0f));
         RefreshWaveStatus();
     }
 
@@ -547,6 +581,7 @@ public partial class BattleScreen : Control
             MaxHp = BossMaxHp
         };
         _boss.Defeated += OnBossDefeated;
+        _boss.PhaseChanged += OnBossPhaseChanged;
         _battleArea.AddChild(_boss);
     }
 
@@ -597,7 +632,7 @@ public partial class BattleScreen : Control
 
         if (Mathf.Abs(_playerRig.Position.X - dangerX) <= BossDangerDistance)
         {
-            State.DamageTrain(BossLaneDamage);
+            DamageTrainWithFeedback(BossLaneDamage, new Vector2(dangerX - 58.0f, 704.0f), "Boss Strike");
             CheckFailure();
         }
 
@@ -606,7 +641,15 @@ public partial class BattleScreen : Control
 
     private void OnBossDefeated()
     {
+        ShowBanner("BOSS DEFEATED", new Color(0.62f, 1.0f, 0.7f, 1.0f));
         ShowResultPanel(true);
+    }
+
+    private void OnBossPhaseChanged(int phase)
+    {
+        ShowBanner($"BOSS PHASE {phase}", phase == 2
+            ? new Color(1.0f, 0.76f, 0.3f, 1.0f)
+            : new Color(1.0f, 0.34f, 0.24f, 1.0f));
     }
 
     private void CheckFailure()
@@ -631,6 +674,8 @@ public partial class BattleScreen : Control
         _bossWarningRect?.QueueFree();
         _bossWarningRect = null;
         ClearCombatObjects();
+        ClearFeedbackObjects();
+        ResetTrainHitFeedback();
 
         _resultPanel = new ColorRect
         {
@@ -720,5 +765,135 @@ public partial class BattleScreen : Control
                 child.QueueFree();
             }
         }
+    }
+
+    private void DamageTrainWithFeedback(int damage, Vector2 textPosition, string reason)
+    {
+        State.DamageTrain(damage);
+        TriggerTrainHitFeedback();
+        ShowFloatingText($"-{damage} {reason}", textPosition, new Color(1.0f, 0.36f, 0.28f, 1.0f), 17);
+    }
+
+    private void TriggerTrainHitFeedback()
+    {
+        _trainHitFeedbackTimer = 0.28f;
+        _trainBase.Color = new Color(0.82f, 0.24f, 0.18f, 1.0f);
+    }
+
+    private void ResetTrainHitFeedback()
+    {
+        _trainHitFeedbackTimer = 0.0f;
+        _trainBase.Position = _trainBaseStartPosition;
+        _trainBase.Color = _trainBaseStartColor;
+    }
+
+    private void ProcessTrainHitFeedback(float delta)
+    {
+        if (_trainHitFeedbackTimer <= 0.0f)
+        {
+            _trainBase.Position = _trainBaseStartPosition;
+            _trainBase.Color = _trainBaseStartColor;
+            return;
+        }
+
+        _trainHitFeedbackTimer -= delta;
+        float ratio = Mathf.Clamp(_trainHitFeedbackTimer / 0.28f, 0.0f, 1.0f);
+        float shakeX = Mathf.Sin(ratio * 36.0f) * 7.0f * ratio;
+        _trainBase.Position = _trainBaseStartPosition + new Vector2(shakeX, 0.0f);
+        _trainBase.Color = _trainBaseStartColor.Lerp(new Color(0.82f, 0.24f, 0.18f, 1.0f), ratio);
+    }
+
+    private void ShowBanner(string text, Color color)
+    {
+        ShowFloatingText(text, new Vector2(110.0f, 160.0f), color, 30, 1.15f, new Vector2(110.0f, 126.0f));
+    }
+
+    private void ShowFloatingText(string text, Vector2 position, Color color, int fontSize, float duration = 0.85f, Vector2? endPosition = null)
+    {
+        Label label = new Label
+        {
+            Position = position,
+            Size = new Vector2(320.0f, 38.0f),
+            Text = text,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Modulate = color,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        label.AddThemeFontSizeOverride("font_size", fontSize);
+        _battleArea.AddChild(label);
+
+        _feedbacks.Add(new TimedFeedback
+        {
+            Node = label,
+            Duration = duration,
+            StartPosition = position,
+            EndPosition = endPosition ?? position + new Vector2(0.0f, -34.0f),
+            StartModulate = color
+        });
+    }
+
+    private void SpawnBurst(Vector2 center, Color color)
+    {
+        ColorRect burst = new ColorRect
+        {
+            Position = center - new Vector2(14.0f, 14.0f),
+            Size = new Vector2(28.0f, 28.0f),
+            PivotOffset = new Vector2(14.0f, 14.0f),
+            Color = color,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        _battleArea.AddChild(burst);
+
+        _feedbacks.Add(new TimedFeedback
+        {
+            Node = burst,
+            Duration = 0.28f,
+            StartPosition = burst.Position,
+            EndPosition = burst.Position,
+            StartScale = Vector2.One,
+            EndScale = new Vector2(2.0f, 2.0f),
+            StartModulate = color
+        });
+    }
+
+    private void ProcessFeedbacks(float delta)
+    {
+        for (int i = _feedbacks.Count - 1; i >= 0; i -= 1)
+        {
+            TimedFeedback feedback = _feedbacks[i];
+            if (feedback.Node.IsQueuedForDeletion())
+            {
+                _feedbacks.RemoveAt(i);
+                continue;
+            }
+
+            feedback.Age += delta;
+            float ratio = Mathf.Clamp(feedback.Age / feedback.Duration, 0.0f, 1.0f);
+            feedback.Node.Position = feedback.StartPosition.Lerp(feedback.EndPosition, ratio);
+            feedback.Node.Scale = feedback.StartScale.Lerp(feedback.EndScale, ratio);
+            Color modulate = feedback.StartModulate;
+            modulate.A = 1.0f - ratio;
+            feedback.Node.Modulate = modulate;
+
+            if (ratio >= 1.0f)
+            {
+                feedback.Node.QueueFree();
+                _feedbacks.RemoveAt(i);
+            }
+        }
+    }
+
+    private void ClearFeedbackObjects()
+    {
+        foreach (TimedFeedback feedback in _feedbacks)
+        {
+            if (!feedback.Node.IsQueuedForDeletion())
+            {
+                feedback.Node.QueueFree();
+            }
+        }
+
+        _feedbacks.Clear();
     }
 }

@@ -5,18 +5,25 @@ public partial class Boss : ColorRect
     [Signal]
     public delegate void DefeatedEventHandler();
 
+    [Signal]
+    public delegate void PhaseChangedEventHandler(int phase);
+
     private const int SegmentCount = 3;
 
     [Export] public int MaxHp { get; set; } = 300;
 
     public int Hp { get; private set; }
+    public int CurrentPhase { get; private set; } = 1;
 
     private Label _hpLabel = null!;
     private ColorRect[] _hpBars = null!;
+    private Color _phaseColor;
+    private float _hitFlashTimer;
 
     public override void _Ready()
     {
         Hp = MaxHp;
+        _phaseColor = Color;
 
         Label nameLabel = new Label
         {
@@ -73,6 +80,22 @@ public partial class Boss : ColorRect
         RefreshHpBars();
     }
 
+    public override void _Process(double delta)
+    {
+        if (_hitFlashTimer > 0.0f)
+        {
+            _hitFlashTimer -= (float)delta;
+            float ratio = Mathf.Clamp(_hitFlashTimer / 0.14f, 0.0f, 1.0f);
+            Color = _phaseColor.Lerp(new Color(1.0f, 0.86f, 0.5f, 1.0f), ratio);
+            Scale = new Vector2(1.0f + ratio * 0.025f, 1.0f + ratio * 0.025f);
+        }
+        else
+        {
+            Color = _phaseColor;
+            Scale = Vector2.One;
+        }
+    }
+
     public Rect2 GetHitRect()
     {
         return new Rect2(Position, Size);
@@ -81,8 +104,10 @@ public partial class Boss : ColorRect
     public void TakeDamage(int damage)
     {
         Hp = Mathf.Max(0, Hp - damage);
+        _hitFlashTimer = 0.14f;
         _hpLabel.Text = GetHpText();
         RefreshHpBars();
+        UpdatePhase();
 
         if (Hp <= 0)
         {
@@ -105,5 +130,23 @@ public partial class Boss : ColorRect
             float ratio = (float)segmentRemaining / segmentHp;
             _hpBars[i].Scale = new Vector2(ratio, 1.0f);
         }
+    }
+
+    private void UpdatePhase()
+    {
+        int nextPhase = Hp > MaxHp * 2 / 3 ? 1 : Hp > MaxHp / 3 ? 2 : 3;
+        if (nextPhase == CurrentPhase)
+        {
+            return;
+        }
+
+        CurrentPhase = nextPhase;
+        _phaseColor = CurrentPhase switch
+        {
+            2 => new Color(0.52f, 0.24f, 0.18f, 1.0f),
+            3 => new Color(0.62f, 0.16f, 0.14f, 1.0f),
+            _ => new Color(0.42f, 0.28f, 0.2f, 1.0f)
+        };
+        EmitSignal(SignalName.PhaseChanged, CurrentPhase);
     }
 }
