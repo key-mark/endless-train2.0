@@ -28,6 +28,25 @@ theme_override_font_sizes/font_size = 22
 text = "540 x 960 Portrait Battle Area"
 horizontal_alignment = 1
 
+[node name="WeaponStatsLabel" type="Label" parent="BattleArea540x960"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 74.0
+offset_right = 250.0
+offset_bottom = 130.0
+theme_override_font_sizes/font_size = 18
+text = "Cannon Damage: 10\nFire Interval: 0.75s"
+
+[node name="CombatStatusLabel" type="Label" parent="BattleArea540x960"]
+layout_mode = 0
+offset_left = 292.0
+offset_top = 74.0
+offset_right = 520.0
+offset_bottom = 150.0
+theme_override_font_sizes/font_size = 18
+text = "Train HP: 100/100\nKill Count: 0\nCurrent Station: 1"
+horizontal_alignment = 2
+
 [node name="LeftTrack" type="ColorRect" parent="BattleArea540x960"]
 layout_mode = 0
 offset_left = 171.0

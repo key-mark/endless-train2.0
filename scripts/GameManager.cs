@@ -17,6 +17,21 @@ public partial class GameManager : Node
         return CannonLevel * 50;
     }
 
+    public int GetCannonDamage()
+    {
+        return 10 + (CannonLevel - 1) * 5;
+    }
+
+    public float GetCannonFireInterval()
+    {
+        return Mathf.Max(0.18f, 0.75f - (CannonLevel - 1) * 0.08f);
+    }
+
+    public void DamageTrain(int damage)
+    {
+        TrainCurrentHp = Mathf.Max(0, TrainCurrentHp - damage);
+    }
+
     public bool TryUpgradeCannon()
     {
         int cost = GetCannonUpgradeCost();
