@@ -1,4 +1,6 @@
-[gd_scene format=3]
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/BattleScreen.cs" id="1_battle_screen_script"]
 
 [node name="BattleScreen" type="Control"]
 layout_mode = 3
@@ -7,6 +9,8 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 0
+script = ExtResource("1_battle_screen_script")
 
 [node name="BattleArea540x960" type="ColorRect" parent="."]
 layout_mode = 0
@@ -74,3 +78,52 @@ theme_override_font_sizes/font_size = 24
 text = "Bottom Train Base Placeholder"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="PlayerRig" type="Control" parent="BattleArea540x960"]
+layout_mode = 0
+offset_left = 270.0
+offset_right = 270.0
+
+[node name="Hero" type="ColorRect" parent="BattleArea540x960/PlayerRig"]
+layout_mode = 0
+offset_left = -18.0
+offset_top = 724.0
+offset_right = 18.0
+offset_bottom = 784.0
+color = Color(0.29, 0.67, 0.9, 1)
+
+[node name="HeroLabel" type="Label" parent="BattleArea540x960/PlayerRig/Hero"]
+layout_mode = 0
+offset_left = -24.0
+offset_top = 62.0
+offset_right = 60.0
+offset_bottom = 88.0
+theme_override_font_sizes/font_size = 16
+text = "Hero"
+horizontal_alignment = 1
+
+[node name="TurretBase" type="ColorRect" parent="BattleArea540x960/PlayerRig"]
+layout_mode = 0
+offset_left = -32.0
+offset_top = 810.0
+offset_right = 32.0
+offset_bottom = 850.0
+color = Color(0.86, 0.69, 0.28, 1)
+
+[node name="TurretBarrel" type="ColorRect" parent="BattleArea540x960/PlayerRig"]
+layout_mode = 0
+offset_left = -8.0
+offset_top = 760.0
+offset_right = 8.0
+offset_bottom = 814.0
+color = Color(0.95, 0.88, 0.46, 1)
+
+[node name="TurretLabel" type="Label" parent="BattleArea540x960/PlayerRig"]
+layout_mode = 0
+offset_left = -44.0
+offset_top = 852.0
+offset_right = 44.0
+offset_bottom = 878.0
+theme_override_font_sizes/font_size = 16
+text = "Turret"
+horizontal_alignment = 1
