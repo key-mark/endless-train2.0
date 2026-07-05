@@ -42,6 +42,13 @@ public partial class Bullet : ColorRect
                 QueueFree();
                 return;
             }
+
+            if (child is Boss boss && !boss.IsQueuedForDeletion() && bulletRect.Intersects(boss.GetHitRect()))
+            {
+                boss.TakeDamage(Damage);
+                QueueFree();
+                return;
+            }
         }
     }
 }

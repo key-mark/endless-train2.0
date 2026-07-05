@@ -18,11 +18,20 @@ public partial class BattleScreen : Control
     private const float UpgradeTargetSize = 50.0f;
     private const float TargetMissDestroyY = 870.0f;
     private const float WaveDuration = 72.0f;
+    private const float BossSpawnY = 122.0f;
+    private const float BossAttackInterval = 3.8f;
+    private const float BossWarningDelay = 1.15f;
+    private const float BossWarningTopY = 188.0f;
+    private const float BossWarningBottomY = 820.0f;
+    private const float BossLaneWidth = 110.0f;
+    private const float BossDangerDistance = 58.0f;
     private const float HeroHitLineY = 760.0f;
     private const float TrainHitLineY = 820.0f;
     private const float HeroHitDistance = 46.0f;
     private const int EnemyHeroDamage = 20;
     private const int EnemyTrainDamage = 8;
+    private const int BossMaxHp = 300;
+    private const int BossLaneDamage = 18;
     private const int AttackAddAmount = 5;
     private const float FireRateStep = 0.08f;
     private const int HealAmount = 18;
@@ -36,13 +45,22 @@ public partial class BattleScreen : Control
     private bool _isDragging;
     private float _shootTimer;
     private float _battleTime;
+    private float _bossAttackTimer;
+    private float _bossWarningTimer;
     private int _killCount;
     private int _nextUpgradeTypeIndex;
     private int _nextWaveEventIndex;
+    private int _nextBossLaneIndex;
+    private int _pendingBossLaneIndex = -1;
     private int _temporaryAttackAdd;
     private int _temporaryFireRateStacks;
     private int _temporaryBulletAdd;
     private bool _waveCompleted;
+    private bool _bossSpawned;
+    private bool _battleEnded;
+    private Boss _boss = null!;
+    private ColorRect _bossWarningRect = null!;
+    private ColorRect _resultPanel = null!;
     private readonly List<WaveSpawnEvent> _waveTimeline = new();
 
     private static readonly string[] UpgradeTypes =
@@ -58,6 +76,15 @@ public partial class BattleScreen : Control
         Enemy,
         UpgradeTarget
     }
+
+    private enum BattlePhase
+    {
+        Wave,
+        Boss,
+        Ended
+    }
+
+    private BattlePhase _phase = BattlePhase.Wave;
 
     private sealed class WaveSpawnEvent
     {
@@ -95,6 +122,11 @@ public partial class BattleScreen : Control
 
     public override void _Process(double delta)
     {
+        if (_battleEnded)
+        {
+            return;
+        }
+
         _shootTimer -= (float)delta;
         if (_shootTimer <= 0.0f)
         {
@@ -103,10 +135,18 @@ public partial class BattleScreen : Control
         }
 
         _battleTime += (float)delta;
-        RunWaveTimeline();
+        if (_phase == BattlePhase.Wave)
+        {
+            RunWaveTimeline();
+        }
+        else if (_phase == BattlePhase.Boss)
+        {
+            RunBossAttack((float)delta);
+        }
 
         CheckEnemyLineDamage();
         RemoveMissedUpgradeTargets();
+        CheckFailure();
         RefreshWeaponStats();
         RefreshCombatStatus();
         RefreshTemporaryBuffs();
@@ -188,7 +228,7 @@ public partial class BattleScreen : Control
     {
         if (_waveCompleted)
         {
-            return "Complete";
+            return _phase == BattlePhase.Boss ? "Boss" : "Complete";
         }
 
         if (time < 10.0f)
@@ -341,6 +381,7 @@ public partial class BattleScreen : Control
                 {
                     State.DamageTrain(EnemyHeroDamage);
                     enemy.QueueFree();
+                    CheckFailure();
                     continue;
                 }
             }
@@ -349,6 +390,7 @@ public partial class BattleScreen : Control
             {
                 State.DamageTrain(EnemyTrainDamage);
                 enemy.QueueFree();
+                CheckFailure();
             }
         }
     }
@@ -454,6 +496,177 @@ public partial class BattleScreen : Control
         if (!_waveCompleted && _battleTime >= WaveDuration)
         {
             _waveCompleted = true;
+            StartBossPhase();
+        }
+    }
+
+    private void StartBossPhase()
+    {
+        if (_bossSpawned || _battleEnded)
+        {
+            return;
+        }
+
+        ClearRemainingWaveObjects();
+        SpawnBoss();
+        _phase = BattlePhase.Boss;
+        _bossSpawned = true;
+        _bossAttackTimer = 1.6f;
+        RefreshWaveStatus();
+    }
+
+    private void ClearRemainingWaveObjects()
+    {
+        foreach (Node child in _battleArea.GetChildren())
+        {
+            if (child is Enemy or UpgradeTarget)
+            {
+                child.QueueFree();
+            }
+        }
+    }
+
+    private void SpawnBoss()
+    {
+        _boss = new Boss
+        {
+            Position = new Vector2(140.0f, BossSpawnY),
+            Size = new Vector2(260.0f, 92.0f),
+            Color = new Color(0.42f, 0.28f, 0.2f, 1.0f),
+            MaxHp = BossMaxHp
+        };
+        _boss.Defeated += OnBossDefeated;
+        _battleArea.AddChild(_boss);
+    }
+
+    private void RunBossAttack(float delta)
+    {
+        if (_pendingBossLaneIndex >= 0)
+        {
+            _bossWarningTimer -= delta;
+            if (_bossWarningTimer <= 0.0f)
+            {
+                ResolveBossLaneAttack();
+            }
+
+            return;
+        }
+
+        _bossAttackTimer -= delta;
+        if (_bossAttackTimer <= 0.0f)
+        {
+            StartBossLaneWarning(_nextBossLaneIndex);
+            _nextBossLaneIndex += 1;
+            _bossAttackTimer = BossAttackInterval;
+        }
+    }
+
+    private void StartBossLaneWarning(int laneIndex)
+    {
+        _pendingBossLaneIndex = laneIndex;
+        _bossWarningTimer = BossWarningDelay;
+
+        float laneX = GetLaneX(laneIndex);
+        _bossWarningRect?.QueueFree();
+        _bossWarningRect = new ColorRect
+        {
+            Position = new Vector2(laneX - BossLaneWidth * 0.5f, BossWarningTopY),
+            Size = new Vector2(BossLaneWidth, BossWarningBottomY - BossWarningTopY),
+            Color = new Color(1.0f, 0.16f, 0.08f, 0.38f),
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        _battleArea.AddChild(_bossWarningRect);
+    }
+
+    private void ResolveBossLaneAttack()
+    {
+        float dangerX = GetLaneX(_pendingBossLaneIndex);
+        _bossWarningRect?.QueueFree();
+        _bossWarningRect = null;
+
+        if (Mathf.Abs(_playerRig.Position.X - dangerX) <= BossDangerDistance)
+        {
+            State.DamageTrain(BossLaneDamage);
+            CheckFailure();
+        }
+
+        _pendingBossLaneIndex = -1;
+    }
+
+    private void OnBossDefeated()
+    {
+        ShowResultPanel(true);
+    }
+
+    private void CheckFailure()
+    {
+        if (!_battleEnded && State.TrainCurrentHp <= 0)
+        {
+            ShowResultPanel(false);
+        }
+    }
+
+    private void ShowResultPanel(bool victory)
+    {
+        if (_battleEnded)
+        {
+            return;
+        }
+
+        _battleEnded = true;
+        _phase = BattlePhase.Ended;
+        _bossWarningRect?.QueueFree();
+        _bossWarningRect = null;
+        ClearCombatObjects();
+
+        _resultPanel = new ColorRect
+        {
+            Position = new Vector2(70.0f, 320.0f),
+            Size = new Vector2(400.0f, 220.0f),
+            Color = victory
+                ? new Color(0.12f, 0.34f, 0.22f, 0.96f)
+                : new Color(0.34f, 0.12f, 0.12f, 0.96f),
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+
+        Label title = new Label
+        {
+            Position = new Vector2(0.0f, 42.0f),
+            Size = new Vector2(_resultPanel.Size.X, 52.0f),
+            Text = victory ? "VICTORY" : "DEFEAT",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        title.AddThemeFontSizeOverride("font_size", 34);
+        _resultPanel.AddChild(title);
+
+        Label summary = new Label
+        {
+            Position = new Vector2(24.0f, 108.0f),
+            Size = new Vector2(_resultPanel.Size.X - 48.0f, 74.0f),
+            Text = victory
+                ? $"Boss defeated\nKills: {_killCount}\nTrain HP: {State.TrainCurrentHp}/{State.TrainMaxHp}"
+                : $"Train destroyed\nKills: {_killCount}\nBoss fight failed",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        summary.AddThemeFontSizeOverride("font_size", 20);
+        _resultPanel.AddChild(summary);
+
+        _battleArea.AddChild(_resultPanel);
+        RefreshWaveStatus();
+    }
+
+    private void ClearCombatObjects()
+    {
+        foreach (Node child in _battleArea.GetChildren())
+        {
+            if (child is Enemy or UpgradeTarget or Bullet or Boss)
+            {
+                child.QueueFree();
+            }
         }
     }
 }
